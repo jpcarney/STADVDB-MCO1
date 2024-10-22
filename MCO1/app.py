@@ -9,20 +9,24 @@ path = kagglehub.dataset_download("fronkongames/steam-games-dataset")
 print("Path to dataset files:", path)
 
 # extract
-data = pd.read_csv("C:/Users/narut/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv", index_col=False)
+data = pd.read_csv("C:/Users/narut/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv")
 df = pd.DataFrame(data)
 
-# Transform / cleaning
-# Identify the starting index for the shift operation
-start_column = "DiscountDLC count"
-start_index = df.columns.get_loc(start_column)
+# reset the index and move the index values to a new 'AppID' column
+df.reset_index(inplace=True)
 
-# generalize all column as object to prevent forcing NaN due to incompatible dtypes
-df[df.columns] = df[df.columns].astype('object')
+# shift values from columns 'AppID' to 'DiscountDLC count' by 1 position to the right
+cols_to_shift = df.columns[1:df.columns.get_loc('DiscountDLC count') + 1]
 
-for i in range(start_index + 1, len(df.columns)):
-    df.iloc[:, i - 1] = df.iloc[:, i]  # Move each value to the left
+# create new df with shifted columns
+df[cols_to_shift] = df[cols_to_shift].shift(periods=1, axis=1)
 
+# move index values to the 'AppID' column
+df['AppID'] = df['index']
+
+# drop temp 'index' column
+df.drop(columns=['index'], inplace=True)
+print(data.columns)
 
 # Initialize the Dash app
 app = Dash(__name__)
