@@ -83,10 +83,18 @@ def load_data(connection, df):
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
+        delete_movies_query = "DELETE FROM GameMovies"
+        insert_movies_query = "INSERT INTO GameMovies (game_id, movies_link) VALUES (%s, %s)"
+
+        delete_screenshots_query = "DELETE FROM GameScreenshots"
+        insert_screenshot_query = "INSERT INTO GameScreenshots (game_id, screenshot_link) VALUES (%s, %s)"
+
         with connection.cursor() as cursor:
             # Delete existing records in the Games table
             cursor.execute(delete_game_query)
-            print("All records deleted from Games table.")
+            cursor.execute(delete_movies_query)
+            cursor.execute(delete_screenshots_query)
+            print("All records deleted.")
 
             # Insert data from the dataframe
             for _, row in df.iterrows():
@@ -105,6 +113,22 @@ def load_data(connection, df):
 
                     # Execute insert for the Games table
                     cursor.execute(insert_game_query, game_data)
+
+                    # Retrieve the game ID from the current row of the DataFrame using the 'AppID' column
+                    game_id = row['AppID']
+
+                    # Insert Screenshots
+                    if 'Screenshots' in row and row['Screenshots']:
+                        screenshot_links = row['Screenshots'].split(',')  # Split the string into a list of links
+                        for screenshot_link in screenshot_links:
+                            cursor.execute(insert_screenshot_query,
+                                           (game_id, screenshot_link.strip()))  # Insert each link
+
+                    # Insert Movies
+                    if 'Movies' in row and row['Movies']:
+                        movies_links = row['Movies'].split(',')  # Split the string into a list of links
+                        for movies_link in movies_links:
+                            cursor.execute(insert_movies_query, (game_id, movies_link.strip()))  # Insert each link
 
                 except Exception as inner_e:
                     print(f"Error inserting row {row['AppID']}: {inner_e}")
