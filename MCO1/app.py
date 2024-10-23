@@ -68,6 +68,9 @@ print(df.head(1))
 
 def load_data(connection, df):
     try:
+        # String holder for delete Game Table values SQL query
+        delete_game_query = "DELETE FROM Games"
+
         # String holder for insert Game Table values SQL query
         insert_game_query = """
         INSERT INTO Games (id, name, release_date, required_age, price, dlc_count, 
@@ -81,6 +84,10 @@ def load_data(connection, df):
         """
 
         with connection.cursor() as cursor:
+            # Delete existing records in the Games table
+            cursor.execute(delete_game_query)
+            print("All records deleted from Games table.")
+
             # Insert data from the dataframe
             for _, row in df.iterrows():
                 try:
