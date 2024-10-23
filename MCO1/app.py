@@ -68,6 +68,7 @@ print(df.head(1))
 
 def load_data(connection, df):
     try:
+        # String holder for insert Game Table values SQL query
         insert_game_query = """
         INSERT INTO Games (id, name, release_date, required_age, price, dlc_count, 
                            about_the_game, reviews, header_image, website, support_url, support_email, 
@@ -80,6 +81,7 @@ def load_data(connection, df):
         """
 
         with connection.cursor() as cursor:
+            # Insert data from the dataframe
             for _, row in df.iterrows():
                 try:
                     game_data = (
