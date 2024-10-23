@@ -34,7 +34,7 @@ if 'Score rank' in df.columns:
     df.drop('Score rank', axis=1, inplace=True)
 
 # Replace empty strings with NaN and empty lists with None
-df = df.applymap(lambda x: None if isinstance(x, list) and len(x) == 0 else (np.nan if x == '' else x))
+df = df.map(lambda x: None if isinstance(x, list) and len(x) == 0 else (np.nan if x == '' else x))
 
 # Replace NaN values with 'None' (which MySQL will interpret as NULL)
 df = df.where(pd.notnull(df), None)
