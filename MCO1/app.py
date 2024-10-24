@@ -10,7 +10,7 @@ path = kagglehub.dataset_download("fronkongames/steam-games-dataset")
 print("Path to dataset files:", path)
 
 # Load CSV file
-file_path = "C:/Users/Lexrey/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv"
+file_path = "C:/Users/narut/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv"
 df = pd.read_csv(file_path, encoding='utf-8')
 
 # reset the index and move the index values to a new 'AppID' column
@@ -48,7 +48,7 @@ app.layout = html.Div([
     dash_table.DataTable(
         id='table',
         columns=[{"name": i, "id": i} for i in df.columns],  # Create column names from the DataFrame
-        data=df.head(5).to_dict('records'),  # Convert DataFrame to a list of dictionaries
+        data=df.head(94).to_dict('records'),  # Convert DataFrame to a list of dictionaries
         page_size=1,  # Set the number of rows per page
         style_table={'overflowX': 'auto'},  # Allow horizontal scrolling if necessary
         style_cell={
@@ -68,10 +68,15 @@ print(df.head(1))
 
 def load_data(connection, df):
     try:
-        # String holder for delete Game Table values SQL query
-        delete_game_query = "DELETE FROM Games"
+        # SQL queries to disable and enable foreign key checks
+        disable_fk_checks = "SET FOREIGN_KEY_CHECKS = 0;"
+        enable_fk_checks = "SET FOREIGN_KEY_CHECKS = 1;"
 
-        # String holder for insert Game Table values SQL query
+        # Use DELETE instead of TRUNCATE
+        delete_games_query = "DELETE FROM Games"
+        delete_movies_query = "DELETE FROM GameMovies"
+        delete_screenshots_query = "DELETE FROM GameScreenshots"
+
         insert_game_query = """
         INSERT INTO Games (id, name, release_date, required_age, price, dlc_count, 
                            about_the_game, reviews, header_image, website, support_url, support_email, 
@@ -83,20 +88,24 @@ def load_data(connection, df):
         VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         """
 
-        delete_movies_query = "DELETE FROM GameMovies"
         insert_movies_query = "INSERT INTO GameMovies (game_id, movies_link) VALUES (%s, %s)"
-
-        delete_screenshots_query = "DELETE FROM GameScreenshots"
         insert_screenshot_query = "INSERT INTO GameScreenshots (game_id, screenshot_link) VALUES (%s, %s)"
 
         with connection.cursor() as cursor:
-            # Delete existing records in the Games table
-            cursor.execute(delete_game_query)
+            # Disable foreign key checks
+            cursor.execute(disable_fk_checks)
+
+            # Delete instead of truncate to avoid foreign key issues
+            cursor.execute(delete_games_query)
             cursor.execute(delete_movies_query)
             cursor.execute(delete_screenshots_query)
-            print("All records deleted.")
+            print("Tables cleared successfully.")
 
-            # Insert data from the dataframe
+            # Prepare batch insert data
+            games_data = []
+            movies_data = []
+            screenshots_data = []
+
             for _, row in df.iterrows():
                 try:
                     game_data = (
@@ -110,30 +119,40 @@ def load_data(connection, df):
                         row['Average playtime forever'], row['Average playtime two weeks'],
                         row['Median playtime forever'], row['Median playtime two weeks'], row['Peak CCU']
                     )
-
-                    # Execute insert for the Games table
-                    cursor.execute(insert_game_query, game_data)
-
-                    # Retrieve the game ID from the current row of the DataFrame using the 'AppID' column
-                    game_id = row['AppID']
+                    games_data.append(game_data)
 
                     # Insert Screenshots
                     if 'Screenshots' in row and row['Screenshots']:
-                        screenshot_links = row['Screenshots'].split(',')  # Split the string into a list of links
+                        screenshot_links = row['Screenshots'].split(',')
                         for screenshot_link in screenshot_links:
-                            cursor.execute(insert_screenshot_query,
-                                           (game_id, screenshot_link.strip()))  # Insert each link
+                            screenshots_data.append((row['AppID'], screenshot_link.strip()))
 
                     # Insert Movies
                     if 'Movies' in row and row['Movies']:
-                        movies_links = row['Movies'].split(',')  # Split the string into a list of links
+                        movies_links = row['Movies'].split(',')
                         for movies_link in movies_links:
-                            cursor.execute(insert_movies_query, (game_id, movies_link.strip()))  # Insert each link
+                            movies_data.append((row['AppID'], movies_link.strip()))
 
                 except Exception as inner_e:
-                    print(f"Error inserting row {row['AppID']}: {inner_e}")
-                    continue  # Skip this row and continue with the next
+                    print(f"Error processing row {row['AppID']}: {inner_e}")
+                    continue
 
+            # Execute batch inserts
+            cursor.executemany(insert_game_query, games_data)
+            print(f"Inserted {len(games_data)} rows into Games table.")
+
+            if screenshots_data:
+                cursor.executemany(insert_screenshot_query, screenshots_data)
+                print(f"Inserted {len(screenshots_data)} rows into GameScreenshots table.")
+
+            if movies_data:
+                cursor.executemany(insert_movies_query, movies_data)
+                print(f"Inserted {len(movies_data)} rows into GameMovies table.")
+
+            # Re-enable foreign key checks
+            cursor.execute(enable_fk_checks)
+
+            # Commit changes
             connection.commit()
             print("Data loaded successfully.")
 
