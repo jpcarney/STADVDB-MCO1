@@ -10,7 +10,7 @@ path = kagglehub.dataset_download("fronkongames/steam-games-dataset")
 print("Path to dataset files:", path)
 
 # Load CSV file
-file_path = "C:/Users/narut/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv"
+file_path = "C:/Users/Lexrey/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv"
 df = pd.read_csv(file_path, encoding='utf-8')
 
 # reset the index and move the index values to a new 'AppID' column
@@ -68,46 +68,93 @@ print(df.head(1))
 
 def load_data(connection, df):
     try:
-        # SQL queries to disable and enable foreign key checks
-        disable_fk_checks = "SET FOREIGN_KEY_CHECKS = 0;"
-        enable_fk_checks = "SET FOREIGN_KEY_CHECKS = 1;"
+        # Delete Queries
+        delete_queries = [
+            "DELETE FROM Games",
+            "DELETE FROM GameMovies",
+            "DELETE FROM GameScreenshots",
+            "DELETE FROM Tags",
+            "DELETE FROM Genres",
+            "DELETE FROM Categories",
+            "DELETE FROM Publishers",
+            "DELETE FROM Developers",
+            "DELETE FROM GameTags",
+            "DELETE FROM GameGenres",
+            "DELETE FROM GameCategories",
+            "DELETE FROM GamePublishers",
+            "DELETE FROM GameDevelopers",
+            "DELETE FROM Languages",
+            "DELETE FROM Supported_Languages",
+            "DELETE FROM Full_Audio_Languages"
+        ]
 
-        # Use DELETE instead of TRUNCATE
-        delete_games_query = "DELETE FROM Games"
-        delete_movies_query = "DELETE FROM GameMovies"
-        delete_screenshots_query = "DELETE FROM GameScreenshots"
-
+        # Insert queries
         insert_game_query = """
-        INSERT INTO Games (id, name, release_date, required_age, price, dlc_count, 
-                           about_the_game, reviews, header_image, website, support_url, support_email, 
-                           onWindows, onMac, onLinux, metacritic_score, metacritic_url, 
-                           achievements, recommendations, notes, 
-                           user_score, positive, negative, estimated_owners, 
-                           average_playtime_forever, average_playtime_2weeks, 
+        INSERT INTO Games (id, name, release_date, required_age, price, dlc_count, about_the_game, reviews, 
+                           header_image, website, support_url, support_email, onWindows, onMac, onLinux, 
+                           metacritic_score, metacritic_url, achievements, recommendations, notes, user_score, 
+                           positive, negative, estimated_owners, average_playtime_forever, average_playtime_2weeks, 
                            median_playtime_forever, median_playtime_2weeks, peak_ccu)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
+                %s, %s, %s, %s, %s)
         """
-
         insert_movies_query = "INSERT INTO GameMovies (game_id, movies_link) VALUES (%s, %s)"
         insert_screenshot_query = "INSERT INTO GameScreenshots (game_id, screenshot_link) VALUES (%s, %s)"
+        insert_tag_query = "INSERT IGNORE INTO Tags (tag_name) VALUES (%s)"
+        insert_genre_query = "INSERT IGNORE INTO Genres (genre_name) VALUES (%s)"
+        insert_category_query = "INSERT IGNORE INTO Categories (category_name) VALUES (%s)"
+        insert_publisher_query = "INSERT IGNORE INTO Publishers (publisher_name) VALUES (%s)"
+        insert_developer_query = "INSERT IGNORE INTO Developers (developer_name) VALUES (%s)"
+        insert_languages_query = "INSERT IGNORE INTO Languages (language_name) VALUES (%s)"
+
+        # Linking queries
+        insert_game_tag_query = "INSERT INTO GameTags (game_id, tag_id) VALUES (%s, %s)"
+        insert_game_genre_query = "INSERT INTO GameGenres (game_id, genre_id) VALUES (%s, %s)"
+        insert_game_category_query = "INSERT IGNORE INTO GameCategories (game_id, category_id) VALUES (%s, %s)"
+        insert_game_publisher_query = "INSERT IGNORE INTO GamePublishers (game_id, publisher_id) VALUES (%s, %s)"
+        insert_game_developer_query = "INSERT IGNORE INTO GameDevelopers (game_id, developer_id) VALUES (%s, %s)"
+        insert_supported_languages_query = "INSERT IGNORE INTO Supported_Languages (game_id, language_id) VALUES (%s, %s)"
+        insert_full_audio_languages_query = "INSERT IGNORE INTO Full_Audio_Languages (game_id, language_id) VALUES (%s, %s)"
 
         with connection.cursor() as cursor:
-            # Disable foreign key checks
-            cursor.execute(disable_fk_checks)
+            # Delete data instead of truncate to avoid foreign key issues
+            for query in delete_queries:
+                cursor.execute(query)
+            print("Cleared tables successfully.")
 
-            # Delete instead of truncate to avoid foreign key issues
-            cursor.execute(delete_games_query)
-            cursor.execute(delete_movies_query)
-            cursor.execute(delete_screenshots_query)
-            print("Tables cleared successfully.")
+            # Reset AUTO_INCREMENT values to 1
+            cursor.execute("ALTER TABLE GameMovies AUTO_INCREMENT = 1;")
+            cursor.execute("ALTER TABLE GameScreenshots AUTO_INCREMENT = 1;")
+            cursor.execute("ALTER TABLE Tags AUTO_INCREMENT = 1;")
+            cursor.execute("ALTER TABLE Genres AUTO_INCREMENT = 1;")
+            cursor.execute("ALTER TABLE Categories AUTO_INCREMENT = 1;")
+            cursor.execute("ALTER TABLE Publishers AUTO_INCREMENT = 1;")
+            cursor.execute("ALTER TABLE Developers AUTO_INCREMENT = 1;")
+            cursor.execute("ALTER TABLE Languages AUTO_INCREMENT = 1;")
+            print("AUTO_INCREMENT values reset successfully.")
 
             # Prepare batch insert data
             games_data = []
             movies_data = []
             screenshots_data = []
+            genres_data = set()
+            categories_data = set()
+            languages_data = set()
+            publishers_data = set()
+            developers_data = set()
+            tags_data = set()
+            game_genres_data = []
+            game_categories_data = []
+            game_publishers_data = []
+            game_developers_data = []
+            game_tags_data = []
+            supported_languages_data = []
+            full_audio_languages_data = []
 
             for _, row in df.iterrows():
+                game_id = row['AppID']
                 try:
+                    # Games data
                     game_data = (
                         row['AppID'], row['Name'], row['Release date'], row['Required age'], row['Price'],
                         row['DiscountDLC count'], row['About the game'], row['Reviews'],
@@ -121,43 +168,140 @@ def load_data(connection, df):
                     )
                     games_data.append(game_data)
 
-                    # Insert Screenshots
-                    if 'Screenshots' in row and row['Screenshots']:
-                        screenshot_links = row['Screenshots'].split(',')
-                        for screenshot_link in screenshot_links:
-                            screenshots_data.append((row['AppID'], screenshot_link.strip()))
-
-                    # Insert Movies
+                    # Movies
                     if 'Movies' in row and row['Movies']:
                         movies_links = row['Movies'].split(',')
                         for movies_link in movies_links:
-                            movies_data.append((row['AppID'], movies_link.strip()))
+                            movies_data.append((game_id, movies_link.strip()))
 
+                    # Screenshots
+                    if 'Screenshots' in row and row['Screenshots']:
+                        screenshot_links = row['Screenshots'].split(',')
+                        for screenshot_link in screenshot_links:
+                            screenshots_data.append((game_id, screenshot_link.strip()))
+
+                    # Genres
+                    if 'Genres' in row and row['Genres']:
+                        genre_list = row['Genres'].split(',')
+                        for genre_name in genre_list:
+                            genres_data.add(genre_name.strip())
+                            game_genres_data.append((game_id, genre_name.strip()))
+
+                    # Categories
+                    if 'Categories' in row and row['Categories']:
+                        category_list = row['Categories'].split(',')
+                        for category_name in category_list:
+                            categories_data.add(category_name.strip())
+                            game_categories_data.append((game_id, category_name.strip()))
+
+                    # Supported Languages
+                    if 'Supported_Languages' in row and row['Supported_Languages']:
+                        supported_languages_list = row['Supported_Languages'].split(',')
+                        for language_name in supported_languages_list:
+                            language_name = language_name.strip()
+                            supported_languages_data.append((game_id, language_name))
+
+                    # Full Audio Languages
+                    if 'Full_Audio_Languages' in row and row['Full_Audio_Languages']:
+                        audio_languages_list = row['Full_Audio_Languages'].split(',')
+                        for language_name in audio_languages_list:
+                            language_name = language_name.strip()
+                            full_audio_languages_data.append((game_id, language_name))
+
+                    # Publishers
+                    if 'Publishers' in row and row['Publishers']:
+                        publisher_list = row['Publishers'].split(',')
+                        for publisher_name in publisher_list:
+                            publishers_data.add(publisher_name.strip())
+                            game_publishers_data.append((game_id, publisher_name.strip()))
+
+                    # Developers
+                    if 'Developers' in row and row['Developers']:
+                        developer_list = row['Developers'].split(',')
+                        for developer_name in developer_list:
+                            developers_data.add(developer_name.strip())
+                            game_developers_data.append((game_id, developer_name.strip()))
+
+                    # Tags
+                    if 'Tags' in row and row['Tags']:
+                        tag_list = row['Tags'].split(',')
+                        for tag_name in tag_list:
+                            tags_data.add(tag_name.strip())
+                            game_tags_data.append((game_id, tag_name.strip()))
+
+                except KeyError as ke:
+                    print(f"Missing key {ke} in row {game_id}, skipping...")
+                    continue
                 except Exception as inner_e:
-                    print(f"Error processing row {row['AppID']}: {inner_e}")
+                    print(f"Error processing row {game_id}: {inner_e}")
                     continue
 
-            # Execute batch inserts
-            cursor.executemany(insert_game_query, games_data)
-            print(f"Inserted {len(games_data)} rows into Games table.")
-
-            if screenshots_data:
-                cursor.executemany(insert_screenshot_query, screenshots_data)
-                print(f"Inserted {len(screenshots_data)} rows into GameScreenshots table.")
-
-            if movies_data:
+            # Execute batch insertions
+            try:
+                # Insert main data
+                cursor.executemany(insert_game_query, games_data)
                 cursor.executemany(insert_movies_query, movies_data)
-                print(f"Inserted {len(movies_data)} rows into GameMovies table.")
+                cursor.executemany(insert_screenshot_query, screenshots_data)
+                cursor.executemany(insert_genre_query, [(genre,) for genre in genres_data])
+                cursor.executemany(insert_category_query, [(category,) for category in categories_data])
+                cursor.executemany(insert_languages_query, [(language,) for language in languages_data])
 
-            # Re-enable foreign key checks
-            cursor.execute(enable_fk_checks)
+                if publishers_data:
+                    cursor.executemany(insert_publisher_query, [(publisher,) for publisher in publishers_data if publisher.strip()])
+                if developers_data:
+                    cursor.executemany(insert_developer_query, [(developer,) for developer in developers_data if developer.strip()])
+                cursor.executemany(insert_tag_query, [(tag,) for tag in tags_data])
+                print("Inserted data into main tables.")
 
-            # Commit changes
-            connection.commit()
-            print("Data loaded successfully.")
+                # Fetch all IDs in bulk for linking
+                cursor.execute("SELECT id, genre_name FROM Genres")
+                genre_id_map = {name: id for id, name in cursor.fetchall()}
+
+                cursor.execute("SELECT id, category_name FROM Categories")
+                category_id_map = {name: id for id, name in cursor.fetchall()}
+
+                cursor.execute("SELECT id, language_name FROM Languages")
+                language_id_map = {name: id for id, name in cursor.fetchall()}
+
+                cursor.execute("SELECT id, publisher_name FROM Publishers")
+                publisher_id_map = {name: id for id, name in cursor.fetchall()}
+
+                cursor.execute("SELECT id, developer_name FROM Developers")
+                developer_id_map = {name: id for id, name in cursor.fetchall()}
+
+                cursor.execute("SELECT id, tag_name FROM Tags")
+                tag_id_map = {name: id for id, name in cursor.fetchall()}
+
+                # Prepare link data for batch insertion
+                game_genres_link_data = [(game_id, genre_id_map[genre_name]) for game_id, genre_name in game_genres_data if genre_name in genre_id_map]
+                game_categories_link_data = [(game_id, category_id_map[category_name]) for game_id, category_name in game_categories_data if category_name in category_id_map]
+                game_publishers_link_data = [(game_id, publisher_id_map[publisher_name]) for game_id, publisher_name in game_publishers_data if publisher_name in publisher_id_map]
+                support_languages_link_data = [(game_id, language_id_map[language_name]) for game_id, language_name in supported_languages_data if language_name in language_id_map]
+                full_audio_languages_link_data = [(game_id, language_id_map[language_name]) for game_id, language_name in full_audio_languages_data if language_name in language_id_map]
+                game_developers_link_data = [(game_id, developer_id_map[developer_name]) for game_id, developer_name in game_developers_data if developer_name in developer_id_map]
+                game_tags_link_data = [(game_id, tag_id_map[tag_name]) for game_id, tag_name in game_tags_data if tag_name in tag_id_map]
+
+                # Execute link insertions
+                cursor.executemany(insert_game_genre_query, game_genres_link_data)
+                cursor.executemany(insert_game_category_query, game_categories_link_data)
+                cursor.executemany(insert_supported_languages_query, support_languages_link_data)
+                cursor.executemany(insert_full_audio_languages_query, full_audio_languages_link_data)
+                cursor.executemany(insert_game_publisher_query, game_publishers_link_data)
+                cursor.executemany(insert_game_developer_query, game_developers_link_data)
+                cursor.executemany(insert_game_tag_query, game_tags_link_data)
+                print("Inserted linked data successfully.")
+
+            except Exception as inner_ex:
+                print(f"Error during batch insertion: {inner_ex}")
+
+        connection.commit()
+        print("Data loaded successfully.")
 
     except Exception as e:
         print(f"Error loading data: {e}")
+    finally:
+        print("Closing connection.")
+        connection.close()
 
 # Database configuration
 db_config = {
@@ -182,11 +326,6 @@ try:
 
 except Exception as e:
     print(f"Error connecting to the database: {e}")
-
-finally:
-    # Close the connection
-    if connection:
-        connection.close()
 
 if __name__ == '__main__':
     app.run(debug=True)
