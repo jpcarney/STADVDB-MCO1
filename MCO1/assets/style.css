@@ -1,0 +1,18 @@
+.tabs-container {
+    padding: 8px; /* Adjust the padding value as needed */
+    background-color: #f8f9fa; /* Optional: change background color if needed */
+    border-radius: 10px; /* Optional: rounded corners for the tabs */
+}
+
+.dashboard-container {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 80vh; /* Adjust the height value as needed */
+    width: 80%; /* Adjust width as necessary */
+    margin: 20px auto; /* Center the container horizontally with some margin on top and bottom */
+    border: 2px solid #007bff; /* Optional: border for the container */
+    border-radius: 15px; /* Optional: rounded corners */
+    padding: 20px; /* Optional: padding inside the container */
+    background-color: #ffffff; /* Optional: background color */
+}

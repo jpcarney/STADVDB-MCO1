@@ -1,10 +1,11 @@
 import ast
 
 import kagglehub
-from dash import Dash, html, dash_table
+from dash import Dash, dcc, html, Input, Output
 import pandas as pd
 import numpy as np
 import pymysql
+import dash_bootstrap_components as dbc
 
 # Download latest version
 path = kagglehub.dataset_download("fronkongames/steam-games-dataset")
@@ -40,33 +41,6 @@ df = df.map(lambda x: None if isinstance(x, list) and len(x) == 0 else (np.nan i
 
 # Replace NaN values with 'None' (which MySQL will interpret as NULL)
 df = df.where(pd.notnull(df), None)
-
-# Initialize the Dash app
-app = Dash(__name__)
-
-# Create the layout with the DataTable to display the DataFrame
-app.layout = html.Div([
-    html.H1("Steam Games Dataset"),
-    dash_table.DataTable(
-        id='table',
-        columns=[{"name": i, "id": i} for i in df.columns],  # Create column names from the DataFrame
-        data=df.head(94).to_dict('records'),  # Convert DataFrame to a list of dictionaries
-        page_size=1,  # Set the number of rows per page
-        style_table={'overflowX': 'auto'},  # Allow horizontal scrolling if necessary
-        style_cell={
-            'textAlign': 'left',
-            'whiteSpace': 'normal',
-            'height': 'auto',
-        },
-        style_header={
-            'fontWeight': 'bold',
-            'backgroundColor': 'lightgrey',
-            'color': 'black'
-        }
-    )
-])
-
-print(df)
 
 def load_data(connection, df):
     try:
@@ -338,5 +312,55 @@ try:
 except Exception as e:
     print(f"Error connecting to the database: {e}")
 
+# https://github.com/cordb/gutensearch
+
+# Initialize the Dash app with Bootstrap styling
+app = Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
+
+app.layout = html.Div([
+    dcc.Tabs(id='tabs-nav', value='tab-1', children=[
+        dcc.Tab(label='Roll-up', value='tab-1'),
+        dcc.Tab(label='Drill-down', value='tab-2'),
+        dcc.Tab(label='Slice', value='tab-3'),
+        dcc.Tab(label='Dice', value='tab-4'),
+        dcc.Tab(label='About', value='tab-5'),
+    ], className="tabs-container"),
+    html.Div(id='tabs-content', className='dashboard-container')
+])
+
+# Callback to update the content based on selected tab
+@app.callback(
+    Output('tabs-content', 'children'),
+    Input('tabs-nav', 'value')
+)
+
+def render_content(tab):
+    if tab == 'tab-1':
+        return html.Div([
+            html.H1("Roll-up Operations"),
+            html.P("Details about roll-up operations go here.")
+        ])
+    elif tab == 'tab-2':
+        return html.Div([
+            html.H1("Drill-down Operations"),
+            html.P("Details about drill-down operations go here.")
+        ])
+    elif tab == 'tab-3':
+        return html.Div([
+            html.H1("Slice Operations"),
+            html.P("Details about slice operations go here.")
+        ])
+    elif tab == 'tab-4':
+        return html.Div([
+            html.H1("Dice Operations"),
+            html.P("Details about dice operations go here.")
+        ])
+    elif tab == 'tab-5':
+        return html.Div([
+            html.H1("About This Dashboard"),
+            html.P("Information about the OLAP operations dashboard goes here.")
+        ])
+    return html.Div()
+
 if __name__ == '__main__':
-    app.run(debug=False)
+    app.run_server(debug=True)
