@@ -1,3 +1,5 @@
+import ast
+
 import kagglehub
 from dash import Dash, html, dash_table
 import pandas as pd
@@ -10,8 +12,8 @@ path = kagglehub.dataset_download("fronkongames/steam-games-dataset")
 print("Path to dataset files:", path)
 
 # Load CSV file
-file_path = "C:/Users/Lexrey/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv"
-df = pd.read_csv(file_path, encoding='utf-8')
+file_path = "C:/Users/narut/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv"
+df = pd.read_csv(file_path, encoding='utf-8', nrows=1000) # nrows = 100 for testing, remove in production
 
 # reset the index and move the index values to a new 'AppID' column
 df.reset_index(inplace=True)
@@ -64,7 +66,7 @@ app.layout = html.Div([
     )
 ])
 
-print(df.head(1))
+print(df)
 
 def load_data(connection, df):
     try:
@@ -195,17 +197,19 @@ def load_data(connection, df):
                             game_categories_data.append((game_id, category_name.strip()))
 
                     # Supported Languages
-                    if 'Supported_Languages' in row and row['Supported_Languages']:
-                        supported_languages_list = row['Supported_Languages'].split(',')
+                    if 'Supported languages' in row and row['Supported languages']:
+                        supported_languages_list = ast.literal_eval(row['Supported languages'])
                         for language_name in supported_languages_list:
                             language_name = language_name.strip()
+                            languages_data.add(language_name)
                             supported_languages_data.append((game_id, language_name))
 
                     # Full Audio Languages
-                    if 'Full_Audio_Languages' in row and row['Full_Audio_Languages']:
-                        audio_languages_list = row['Full_Audio_Languages'].split(',')
+                    if 'Full audio languages' in row and row['Full audio languages']:
+                        audio_languages_list = ast.literal_eval(row['Full audio languages'])
                         for language_name in audio_languages_list:
                             language_name = language_name.strip()
+                            languages_data.add(language_name)
                             full_audio_languages_data.append((game_id, language_name))
 
                     # Publishers
@@ -240,14 +244,21 @@ def load_data(connection, df):
             try:
                 # Insert main data
                 cursor.executemany(insert_game_query, games_data)
+                print("Inserted data into games table.")
                 cursor.executemany(insert_movies_query, movies_data)
+                print("Inserted data into movies table.")
                 cursor.executemany(insert_screenshot_query, screenshots_data)
+                print("Inserted data into screenshots table.")
                 cursor.executemany(insert_genre_query, [(genre,) for genre in genres_data])
+                print("Inserted data into genres table.")
                 cursor.executemany(insert_category_query, [(category,) for category in categories_data])
+                print("Inserted data into categories table.")
                 cursor.executemany(insert_languages_query, [(language,) for language in languages_data])
+                print("Inserted data into languages table.")
 
                 if publishers_data:
                     cursor.executemany(insert_publisher_query, [(publisher,) for publisher in publishers_data if publisher.strip()])
+                    print("Inserted data into publishers table.")
                 if developers_data:
                     cursor.executemany(insert_developer_query, [(developer,) for developer in developers_data if developer.strip()])
                 cursor.executemany(insert_tag_query, [(tag,) for tag in tags_data])
@@ -328,4 +339,4 @@ except Exception as e:
     print(f"Error connecting to the database: {e}")
 
 if __name__ == '__main__':
-    app.run(debug=True)
+    app.run(debug=False)
