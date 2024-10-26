@@ -381,11 +381,6 @@ except Exception as e:
 
 # https://github.com/cordb/gutensearch
 
-from dash import Dash, dcc, html, callback_context
-import dash_bootstrap_components as dbc
-from dash.dependencies import Input, Output
-import plotly.express as px
-
 # Initialize the Dash app with Bootstrap styling
 app = Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
 
@@ -440,7 +435,7 @@ def create_rollup_content():
                 value='Release date',
                 clearable=False
             ),
-            html.Div([
+            html.Div(id='grouping-dropdown-container', children=[
                 html.H4("Group By:"),
                 dcc.Dropdown(
                     id='grouping-selector',
@@ -451,7 +446,7 @@ def create_rollup_content():
                     value='Year',
                     clearable=False
                 )
-            ], id='grouping-dropdown-container'),
+            ]),
         ], className='dropdown-container'),
         html.Div(id='rollup-output', className='output-container')  # Output div
     ])
@@ -506,6 +501,16 @@ def create_dice_content():
 )
 def update_rollup_output(selected_value, grouping):
     return create_output_graph(selected_value, grouping, 'Roll-up')
+
+# Callback for showing/hiding the Group By dropdown
+@app.callback(
+    Output('grouping-dropdown-container', 'style'),
+    Input('rollup-dropdown', 'value'),
+)
+def toggle_grouping_dropdown(selected_value):
+    if selected_value == 'Release date':
+        return {'display': 'block'}  # Show Group By dropdown
+    return {'display': 'none'}  # Hide Group By dropdown
 
 # Callback for Drill-down tab
 @app.callback(
@@ -577,8 +582,8 @@ def create_output_graph(selected_value, grouping, operation):
                          title='User Score by Game Name',
                          labels={'Game Name': 'Game Name', 'User Score': 'User Score'})
             return dcc.Graph(figure=fig)
-
     return html.Div("No data available for the selected variable.")
+
 
 if __name__ == '__main__':
     app.run_server(debug=False)
