@@ -6,6 +6,8 @@ import pandas as pd
 import numpy as np
 import pymysql
 import dash_bootstrap_components as dbc
+import plotly.express as px
+from setuptools.installer import fetch_build_egg
 
 # Download latest version
 path = kagglehub.dataset_download("fronkongames/steam-games-dataset")
@@ -284,10 +286,56 @@ def load_data(connection, df):
 
     except Exception as e:
         print(f"Error loading data: {e}")
-    finally:
-        print("Closing connection.")
-        connection.close()
 
+
+def fetch_roll_up_data(connection):
+    query = """
+    SELECT Genres.genre_name, COUNT(Games.id) AS num_games
+    FROM Games
+    JOIN GameGenres ON Games.id = GameGenres.game_id
+    JOIN Genres ON GameGenres.genre_id = Genres.id
+    GROUP BY Genres.genre_name;
+    """
+    df = pd.read_sql(query, connection)
+    return df
+
+def fetch_drill_down_data(connection):
+    query = """
+        SELECT Genres.genre_name, Developers.developer_name, COUNT(Games.id) AS num_games
+        FROM Games
+        JOIN GameGenres ON Games.id = GameGenres.game_id
+        JOIN Genres ON GameGenres.genre_id = Genres.id
+        JOIN GameDevelopers ON Games.id = GameDevelopers.game_id
+        JOIN Developers ON GameDevelopers.developer_id = Developers.id
+        GROUP BY Genres.genre_name, Developers.developer_name;
+    """
+    return pd.read_sql(query, connection)
+
+
+def update_sunburst(clickData, connection):
+    # Fetch data each time the callback is triggered
+    data = fetch_drill_down_data(connection)
+
+    # Check if a genre was clicked to drill down
+    if clickData:
+        selected_genre = clickData["points"][0]["label"]
+        filtered_data = data[data["genre_name"] == selected_genre]
+    else:
+        # Default view: Show all genres with their developers
+        filtered_data = data
+
+    # Create the Sunburst chart
+    fig = px.sunburst(
+        filtered_data,
+        path=["genre_name", "dev_name"],  # Define the hierarchy
+        values="num_games",
+        title="Number of Games by Genre and Developer",
+    )
+
+    fig.update_traces(hovertemplate="<b>%{label}</b><br>Games: %{value}<extra></extra>")
+    fig.update_layout(margin=dict(t=0, l=0, r=0, b=0))
+
+    return fig
 # Database configuration
 db_config = {
     'host': 'localhost',
@@ -318,7 +366,7 @@ except Exception as e:
 app = Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
 
 app.layout = html.Div([
-    dcc.Tabs(id='tabs-nav', value='tab-1', children=[
+    dcc.Tabs(id='tabs', value='tab-1', children=[
         dcc.Tab(label='Roll-up', value='tab-1'),
         dcc.Tab(label='Drill-down', value='tab-2'),
         dcc.Tab(label='Slice', value='tab-3'),
@@ -331,19 +379,24 @@ app.layout = html.Div([
 # Callback to update the content based on selected tab
 @app.callback(
     Output('tabs-content', 'children'),
-    Input('tabs-nav', 'value')
+    # ("drilldown-sunburst", "figure"),
+    Input('tabs', 'value'),
+    # Input("drilldown-sunburst", "clickData")
 )
 
 def render_content(tab):
     if tab == 'tab-1':
-        return html.Div([
-            html.H1("Roll-up Operations"),
-            html.P("Details about roll-up operations go here.")
-        ])
+        # Fetch data for roll-up operation
+        df = fetch_roll_up_data(connection)
+        # Create a bar chart
+        fig = px.bar(df, x="genre_name", y="num_games", title="Number of Games per Genre")
+
+        # Return chart
+        return dcc.Graph(figure=fig)
     elif tab == 'tab-2':
         return html.Div([
-            html.H1("Drill-down Operations"),
-            html.P("Details about drill-down operations go here.")
+            html.H2("Drill-Down Operation: Games by Genre and Developer"),
+            # dcc.Graph(id="drilldown-sunburst"),
         ])
     elif tab == 'tab-3':
         return html.Div([
@@ -363,4 +416,4 @@ def render_content(tab):
     return html.Div()
 
 if __name__ == '__main__':
-    app.run_server(debug=True)
+    app.run_server(debug=False)
