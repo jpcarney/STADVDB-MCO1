@@ -379,7 +379,21 @@ def fetch_roll_up_drill_down_data(engine, selected_column, grouping):
         FROM Games
         GROUP BY estimated_owners
         """
-
+    elif selected_column == "Peak CCU":
+        query = """
+        SELECT 
+            CASE 
+                WHEN peak_ccu < 100 THEN '0-99'
+                WHEN peak_ccu < 200 THEN '100-199'
+                WHEN peak_ccu < 500 THEN '200-499'
+                WHEN peak_ccu < 1000 THEN '500-999'
+                ELSE '1000+' 
+            END AS ccu_range,
+            COUNT(id) AS num_games
+        FROM Games
+        GROUP BY ccu_range
+        ORDER BY MIN(peak_ccu);
+        """
     with engine.connect() as connection:
         return pd.read_sql(query, connection)
 
@@ -542,7 +556,7 @@ def create_output_graph(selected_value, grouping, operation):
         'Genre': {'x': 'genre_name', 'y': 'num_games', 'title': 'Number of Games per Genre'},
         'Price': {'x': 'price_range', 'y': 'num_games', 'title': 'Number of Games by Price'},
         'Estimated owners': {'x': 'estimated_owners', 'y': 'num_games', 'title': 'Number of Games by Estimated Owners'},
-        'Peak CCU': {'x': 'peak_ccu', 'y': 'num_games', 'title': 'Number of Games by Peak CCU'},
+        'Peak CCU': {'x': 'ccu_range', 'y': 'num_games', 'title': 'Number of Games by Peak CCU'},
     }
 
     # Mock DataFrame fetch
@@ -571,8 +585,14 @@ def create_output_graph(selected_value, grouping, operation):
                 df['lower_bound'] = df['price_range'].apply(lambda x: float(x.split('-')[0]))
                 df = df.sort_values(by='lower_bound', ascending=True)
             elif selected_value == 'Estimated owners':
-                df['lower_bound_owners'] = df['estimated_owners'].apply(lambda x: float(x.split('-')[0]) if '-' in x else float(x))
-                df = df.sort_values(by='lower_bound_owners', ascending=True)
+                df['lower_bound'] = df['estimated_owners'].apply(lambda x: float(x.split('-')[0]) if '-' in x else float(x))
+                df = df.sort_values(by='lower_bound', ascending=True)
+            elif selected_value == 'Peak CCU':
+                df['lower_bound'] = df['ccu_range'].apply(
+                    lambda x: float(x.split('-')[0]) if '-' in x else float(x.replace('+', ''))
+                )
+                df = df.sort_values(by='lower_bound', ascending=True)
+
         if df is not None:
             fig = px.bar(df, x=params['x'], y=params['y'],
                          title=params['title'],
