@@ -334,7 +334,7 @@ def load_data(engine, df):
         print(f"An error occurred: {e}")
 
 
-def fetch_roll_up_data(engine, selected_column, grouping):
+def fetch_roll_up_drill_down_data(engine, selected_column, grouping):
     if selected_column == "Release date":
         if grouping == "5 Years":
             query = """
@@ -363,7 +363,13 @@ def fetch_roll_up_data(engine, selected_column, grouping):
         JOIN Genres ON GameGenres.genre_id = Genres.id
         GROUP BY Genres.genre_name;
         """
-
+    elif selected_column == "Price":
+        query = """
+        SELECT price, COUNT(id) AS num_games
+        FROM Games
+        GROUP BY price
+        ORDER BY price;
+        """
     with engine.connect() as connection:
         return pd.read_sql(query, connection)
 
@@ -394,11 +400,10 @@ app = Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
 
 app.layout = html.Div([
     dcc.Tabs(id='tabs', value='tab-1', children=[
-        dcc.Tab(label='Roll-up', value='tab-1'),
-        dcc.Tab(label='Drill-down', value='tab-2'),
-        dcc.Tab(label='Slice', value='tab-3'),
-        dcc.Tab(label='Dice', value='tab-4'),
-        dcc.Tab(label='About', value='tab-5'),
+        dcc.Tab(label='Roll-up/Drill-down', value='tab-1'),
+        dcc.Tab(label='Slice', value='tab-2'),
+        dcc.Tab(label='Dice', value='tab-3'),
+        dcc.Tab(label='About', value='tab-4'),
     ], className="tabs-container"),
     html.Div(id='tabs-content', className='dashboard-container')
 ])
@@ -419,26 +424,24 @@ options = [
 )
 def render_content(tab):
     if tab == 'tab-1':
-        return create_rollup_content()
+        return create_rollup_drilldown_content()
     elif tab == 'tab-2':
-        return create_drilldown_content()
-    elif tab == 'tab-3':
         return create_slice_content()
-    elif tab == 'tab-4':
+    elif tab == 'tab-3':
         return create_dice_content()
-    elif tab == 'tab-5':
+    elif tab == 'tab-4':
         return html.Div([
             html.H1("About This Dashboard"),
             html.P("Information about the OLAP operations dashboard goes here.")
         ])
     return html.Div()
 
-def create_rollup_content():
+def create_rollup_drilldown_content():
     return html.Div([
         html.Div([  # Dropdown container
             html.H4("Variable Select:"),
             dcc.Dropdown(
-                id='rollup-dropdown',
+                id='rollup-drilldown-dropdown',
                 options=options,
                 value='Release date',
                 clearable=False
@@ -457,21 +460,7 @@ def create_rollup_content():
                 )
             ]),
         ], className='dropdown-container'),
-        html.Div(id='rollup-output', className='output-container')  # Output div
-    ])
-
-def create_drilldown_content():
-    return html.Div([
-        html.Div([  # Dropdown container
-            html.H4("Variable Select:"),
-            dcc.Dropdown(
-                id='drilldown-dropdown',
-                options=options,
-                value='Release date',
-                clearable=False
-            )
-        ], className='dropdown-container'),
-        html.Div(id='drilldown-output', className='output-container')  # Output div
+        html.Div(id='rollup-drilldown-output', className='output-container')  # Output div
     ])
 
 def create_slice_content():
@@ -502,32 +491,24 @@ def create_dice_content():
         html.Div(id='dice-output', className='output-container')  # Output div
     ])
 
-# Callback for Roll-up tab
+# Callback for Roll-up/Drill-down tab
 @app.callback(
-    Output('rollup-output', 'children'),
-    Input('rollup-dropdown', 'value'),
+    Output('rollup-drilldown-output', 'children'),
+    Input('rollup-drilldown-dropdown', 'value'),
     Input('grouping-selector', 'value'),
 )
-def update_rollup_output(selected_value, grouping):
-    return create_output_graph(selected_value, grouping, 'Roll-up')
+def update_rollup_drilldown_output(selected_value, grouping):
+    return create_output_graph(selected_value, grouping, 'Roll-up/Drill-down')
 
 # Callback for showing/hiding the Group By dropdown
 @app.callback(
     Output('grouping-dropdown-container', 'style'),
-    Input('rollup-dropdown', 'value'),
+    Input('rollup-drilldown-dropdown', 'value'),
 )
 def toggle_grouping_dropdown(selected_value):
     if selected_value == 'Release date':
         return {'display': 'block'}  # Show Group By dropdown
     return {'display': 'none'}  # Hide Group By dropdown
-
-# Callback for Drill-down tab
-@app.callback(
-    Output('drilldown-output', 'children'),
-    Input('drilldown-dropdown', 'value'),
-)
-def update_drilldown_output(selected_value):
-    return create_output_graph(selected_value, None, 'Drill-down')
 
 # Callback for Slice tab
 @app.callback(
@@ -557,12 +538,12 @@ def create_output_graph(selected_value, grouping, operation):
     }
 
     # Mock DataFrame fetch
-    df = fetch_roll_up_data(engine, selected_value, grouping) if operation == 'Roll-up' else None
+    df = fetch_roll_up_drill_down_data(engine, selected_value, grouping) if operation == 'Roll-up/Drill-down' else None
 
     if selected_value in options:
         params = options[selected_value]
 
-        if operation == 'Roll-up':
+        if operation == 'Roll-up/Drill-down':
             if selected_value == 'Release date':
                 if grouping == 'Month':
                     params['x'] = 'release_month'
@@ -575,8 +556,10 @@ def create_output_graph(selected_value, grouping, operation):
                 elif grouping == '5 Years':
                     params['x'] = 'release_5years'
                     params['x_label'] = 'Release Period'
-                    df = df.sort_values(by=params['x'], ascending=True)  # Sort by release period in ascending order
-            if selected_value == 'Genre':
+                    df = df.sort_values(by=params['x'], ascending=True)
+            elif selected_value == 'Genre':
+                df = df.sort_values(by=params['y'], ascending=True)
+            elif selected_value == 'Price':
                 df = df.sort_values(by=params['y'], ascending=True)
         # Sort the DataFrame by the y value
         if df is not None:
@@ -586,24 +569,7 @@ def create_output_graph(selected_value, grouping, operation):
                          labels={params['x']: params['x'], params['y']: 'Total Games'})
             return dcc.Graph(figure=fig)
 
-    # Drill-down operation simulation
-    if operation == 'Drill-down':
-        if selected_value == 'Release date':
-            # Example drill-down data for "Release date"
-            drilldown_data = {
-                'Game Name': ['Game A', 'Game B', 'Game C'],
-                'Release Date': ['2022-01-15', '2022-06-10', '2023-03-20'],
-                'Genre': ['Action', 'Adventure', 'RPG'],
-                'User Score': [8.5, 9.0, 7.5]
-            }
-            df_drilldown = pd.DataFrame(drilldown_data)
-            # Create a bar plot for User Score by Game Name as an example
-            fig = px.bar(df_drilldown, x='Game Name', y='User Score',
-                         title='User Score by Game Name',
-                         labels={'Game Name': 'Game Name', 'User Score': 'User Score'})
-            return dcc.Graph(figure=fig)
     return html.Div("No data available for the selected variable.")
-
 
 if __name__ == '__main__':
     app.run_server(debug=False)
