@@ -8,9 +8,8 @@ import plotly.express as px
 import os
 from sqlalchemy import create_engine, inspect, text
 import pymysql
-import time
-from sqlalchemy.orm import Session
 from setuptools.installer import fetch_build_egg
+import time
 
 # Download latest version
 path = kagglehub.dataset_download("fronkongames/steam-games-dataset")
@@ -51,22 +50,19 @@ df = df.where(pd.notnull(df), None)
 # Replace "0 - 0" with "0 - 20000" in the Estimated Owners column
 df['Estimated owners'] = df['Estimated owners'].replace("0 - 0", "0 - 20000")
 
-# Define a function to parse dates
+# function to parse dates
 def parse_dates(date_str):
     # Check if the format is '%b %Y'
     try:
         # Try to parse as '%b %Y'
         return pd.to_datetime(date_str, format='%b %Y').date()
     except ValueError:
-        # If it fails, try other formats
         try:
             return pd.to_datetime(date_str, errors='coerce').date()
         except ValueError:
-            return None  # Return None if all formats fail
+            return None
 
-# Apply the function to the 'Release date' column
 df['Release date'] = df['Release date'].apply(parse_dates)
-
 
 def load_data(engine, df):
     try:
@@ -330,6 +326,7 @@ def load_data(engine, df):
                 print("Inserted data into Full_Audio_Languages table.")
 
                 print("Data loaded successfully.")
+
             except Exception as e:
                 print(f"Error while inserting data: {e}")
 
@@ -341,7 +338,8 @@ def fetch_roll_up_drill_down_data(engine, selected_column, grouping):
     if selected_column == "Release date":
         if grouping == "5 Years":
             query = """
-            SELECT CONCAT(FLOOR(YEAR(release_date) / 5) * 5, '-', FLOOR(YEAR(release_date) / 5) * 5 + 4) AS release_5years,
+            SELECT CONCAT(FLOOR(YEAR(release_date) / 5) * 5, '-', FLOOR(YEAR(release_date) / 5) * 5 + 4) 
+            AS release_5years,
                    COUNT(id) AS num_games
             FROM Games
             GROUP BY release_5years;
@@ -411,8 +409,16 @@ try:
     # Create the SQLAlchemy engine
     engine = create_engine(f"{db_config['dialect']}://{db_config['user']}:{db_config['password']}@{db_config['host']}/{db_config['database']}", echo=True)
 
+    start_time = time.time()
+
     # Load the data into the database
     load_data(engine, df)  # Modify load_data to accept an SQLAlchemy engine
+
+    end_time = time.time()
+
+    # Calculate the runtime
+    runtime = end_time - start_time
+    print(f"Runtime: {runtime} seconds")
 
 except Exception as e:
     print(f"Error connecting to the database: {e}")
@@ -455,9 +461,23 @@ def render_content(tab):
     elif tab == 'tab-4':
         return html.Div([
             html.H1("About This Dashboard"),
-            html.P("Information about the OLAP operations dashboard goes here.")
+            html.P(
+                "This dashboard is an OLAP Web Application designed for visualizing and analyzing data outputs from the steam games database as a requirement for STADVDB MCO1."),
+            html.P("Project Details:"),
+            html.Ul([
+                html.Li([html.Strong("Project Name: "), "STADVDB-MCO1"]),
+                html.Li([html.Strong("Version: "), "1.0"]),
+                html.Li([html.Strong("Developers: "), "John Paul C. Carney, Lexrey D. Porciuncula"]),
+                html.Li([html.Strong("Contact Information: "), "jpcarney@dlsu.edu.ph, lexrey_porciuncula@dlsu.edu.ph"]),
+                html.Li([html.Strong("Description: "), "OLAP Web Application for STADVDB MCO1 Output"]),
+                html.Li([
+                    html.Strong("Repository: "),
+                    html.A("GitHub Repository", href="https://github.com/jpcarney/STADVDB-MCO1")
+                ]),
+                html.Li([html.Strong("Required Packages: "),
+                         "kagglehub, dash, pandas, numpy, dash_bootstrap_components, plotly, sqlalchemy"]),
+            ]),
         ])
-    return html.Div()
 
 def create_rollup_drilldown_content():
     return html.Div([
