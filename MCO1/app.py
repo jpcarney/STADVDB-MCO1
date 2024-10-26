@@ -365,10 +365,10 @@ def fetch_roll_up_drill_down_data(engine, selected_column, grouping):
         """
     elif selected_column == "Price":
         query = """
-        SELECT price, COUNT(id) AS num_games
+        SELECT CONCAT(FLOOR(price / 5) * 5, '-', FLOOR(price / 5) * 5 + 4.99) AS price_range,
+               COUNT(id) AS num_games
         FROM Games
-        GROUP BY price
-        ORDER BY price;
+        GROUP BY price_range
         """
     with engine.connect() as connection:
         return pd.read_sql(query, connection)
@@ -412,7 +412,6 @@ options = [
     {'label': 'Release Date', 'value': 'Release date'},
     {'label': 'Genre', 'value': 'Genre'},
     {'label': 'Price', 'value': 'Price'},
-    {'label': 'User Score', 'value': 'User score'},
     {'label': 'Estimated Owners', 'value': 'Estimated owners'},
     {'label': 'Peak CCU', 'value': 'Peak CCU'}
 ]
@@ -531,8 +530,7 @@ def create_output_graph(selected_value, grouping, operation):
     options = {
         'Release date': {'x': 'release_year', 'y': 'num_games', 'title': 'Number of Games by Release Date'},
         'Genre': {'x': 'genre_name', 'y': 'num_games', 'title': 'Number of Games per Genre'},
-        'Price': {'x': 'price', 'y': 'num_games', 'title': 'Number of Games by Price'},
-        'User score': {'x': 'user_score', 'y': 'num_games', 'title': 'Number of Games by User Score'},
+        'Price': {'x': 'price_range', 'y': 'num_games', 'title': 'Number of Games by Price'},
         'Estimated owners': {'x': 'estimated_owners', 'y': 'num_games', 'title': 'Number of Games by Estimated Owners'},
         'Peak CCU': {'x': 'peak_ccu', 'y': 'num_games', 'title': 'Number of Games by Peak CCU'},
     }
@@ -560,10 +558,12 @@ def create_output_graph(selected_value, grouping, operation):
             elif selected_value == 'Genre':
                 df = df.sort_values(by=params['y'], ascending=True)
             elif selected_value == 'Price':
+                df['lower_bound'] = df['price_range'].apply(lambda x: float(x.split('-')[0]))
+                df = df.sort_values(by='lower_bound', ascending=True)
+            elif selected_value == 'Estimated owners':
                 df = df.sort_values(by=params['y'], ascending=True)
-        # Sort the DataFrame by the y value
+
         if df is not None:
-            # Create the bar plot
             fig = px.bar(df, x=params['x'], y=params['y'],
                          title=params['title'],
                          labels={params['x']: params['x'], params['y']: 'Total Games'})
