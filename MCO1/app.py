@@ -392,42 +392,77 @@ app.layout = html.Div([
     html.Div(id='tabs-content', className='dashboard-container')
 ])
 
+options = [
+    {'label': 'Name', 'value': 'Name'},
+    {'label': 'Release Date', 'value': 'Release date'},
+    {'label': 'Genre', 'value': 'Genre'},
+    {'label': 'Price', 'value': 'Price'},
+    {'label': 'User Score', 'value': 'User score'},
+    {'label': 'Estimated Owners', 'value': 'Estimated owners'},
+    {'label': 'Peak CCU', 'value': 'Peak CCU'}
+]
+
+
 # Callback to update the content based on selected tab
 @app.callback(
     Output('tabs-content', 'children'),
+    # ("drilldown-sunburst", "figure"),
     Input('tabs', 'value'),
+    # Input("drilldown-sunburst", "clickData")
 )
 
 def render_content(tab):
     if tab == 'tab-1':
-        df = fetch_roll_up_data(engine)
-
-        fig = px.bar(df, x="genre_name", y="num_games", title="Number of Games per Genre")
-
-        return dcc.Graph(figure=fig)
+        return html.Div([  # Return a single Div that contains both components
+            html.Div([  # Dropdown container
+            html.H4("Variable Select:"),
+            dcc.Dropdown(
+                id='rollup-dropdown',
+                options=options,
+                value='Name',
+                clearable=False
+            )
+        ], className='dropdown-container'),  # Class for dropdown styling
+            html.Div(id='output-div', className='output-container')  # Output div
+        ])
     elif tab == 'tab-2':
-        # Sunburst drill-down for games by genre and developer
-        df = fetch_drill_down_data(engine)  # This function fetches genre, developer, and count data
-
-        fig = px.sunburst(
-            df,
-            path=['genre_name', 'developer_name'],
-            values='num_games',
-            title="Drill-Down: Games by Genre and Developer"
-        )
         return html.Div([
-            html.H2("Drill-Down Operation: Games by Genre and Developer"),
-            dcc.Graph(id="drilldown-sunburst", figure=fig),
+            html.Div([  # Dropdown container
+                html.H4("Variable Select:"),
+                dcc.Dropdown(
+                    id='drilldown-dropdown',
+                    options=options,
+                    value='Name',
+                    clearable=False
+                )
+            ], className='dropdown-container'),  # Class for dropdown styling
+            html.Div(id='output-div', className='output-container')  # Output div
         ])
     elif tab == 'tab-3':
         return html.Div([
-            html.H1("Slice Operations"),
-            html.P("Details about slice operations go here.")
+            html.Div([  # Dropdown container
+                html.H4("Variable Select:"),
+                dcc.Dropdown(
+                    id='slice-dropdown',
+                    options=options,
+                    value='Name',
+                    clearable=False
+                )
+            ], className='dropdown-container'),  # Class for dropdown styling
+            html.Div(id='output-div', className='output-container')  # Output div
         ])
     elif tab == 'tab-4':
         return html.Div([
-            html.H1("Dice Operations"),
-            html.P("Details about dice operations go here.")
+            html.Div([  # Dropdown container
+                html.H4("Variable Select:"),
+                dcc.Dropdown(
+                    id='dice-dropdown',
+                    options=options,
+                    value='Name',
+                    clearable=False
+                )
+            ], className='dropdown-container'),  # Class for dropdown styling
+            html.Div(id='output-div', className='output-container')  # Output div
         ])
     elif tab == 'tab-5':
         return html.Div([
@@ -435,5 +470,24 @@ def render_content(tab):
             html.P("Information about the OLAP operations dashboard goes here.")
         ])
     return html.Div()
+
+@app.callback(
+    Output('output-div', 'children'),
+    Input('rollup-dropdown', 'value'),
+    Input('tabs', 'value')  # Include the current tab as input
+)
+def update_output(selected_value, current_tab):
+    # Only update if we are in tab-1
+    if current_tab == 'tab-1':
+        # Fetch data for roll-up operation
+        df = fetch_roll_up_data(engine)
+        if selected_value == 'Name':
+            return [html.Div("You selected: Name")]
+        elif selected_value == 'Genre':
+            fig = px.bar(df, x="genre_name", y="num_games", title="Number of Games per Genre")
+            return dcc.Graph(figure=fig)
+        elif selected_value == 'Release Date':
+            return html.Div("You selected: Release Year.")
+    return html.Div()  # Return empty div for other tabs
 if __name__ == '__main__':
     app.run_server(debug=False)
