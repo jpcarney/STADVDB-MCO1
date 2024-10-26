@@ -616,7 +616,7 @@ def create_output_graph(selected_value, grouping, operation):
         if df is not None:
             fig = px.bar(df, x=params['x'], y=params['y'],
                          title=params['title'],
-                         labels={params['x']: params['x'], params['y']: 'Total Games'})
+                         labels={params['x']: params['x_label'], params['y']: 'Total Games'})
             return dcc.Graph(figure=fig)
 
     return html.Div("No data available for the selected variable.")
