@@ -47,6 +47,23 @@ df = df.map(lambda x: None if isinstance(x, list) and len(x) == 0 else (np.nan i
 # Replace NaN values with 'None' (which MySQL will interpret as NULL)
 df = df.where(pd.notnull(df), None)
 
+# Define a function to parse dates
+def parse_dates(date_str):
+    # Check if the format is '%b %Y'
+    try:
+        # Try to parse as '%b %Y'
+        return pd.to_datetime(date_str, format='%b %Y').date()
+    except ValueError:
+        # If it fails, try other formats
+        try:
+            return pd.to_datetime(date_str, errors='coerce').date()
+        except ValueError:
+            return None  # Return None if all formats fail
+
+# Apply the function to the 'Release date' column
+df['Release date'] = df['Release date'].apply(parse_dates)
+
+
 def load_data(engine, df):
     try:
         # Insert queries
@@ -387,7 +404,6 @@ options = [
     {'label': 'Peak CCU', 'value': 'Peak CCU'}
 ]
 
-
 # Callback to update the content based on selected tab
 @app.callback(
     Output('tabs-content', 'children'),
@@ -396,29 +412,30 @@ options = [
 
 def render_content(tab):
     if tab == 'tab-1':
-        return html.Div([  # Return a single Div that contains both components
+        return html.Div([
+            # Container for the main dropdown and grouping dropdown
             html.Div([  # Dropdown container
-            html.H4("Variable Select:"),
-            dcc.Dropdown(
-                id='rollup-dropdown',
-                options=options,
-                value='Name',
-                clearable=False
-            )
-        ], className='dropdown-container'),  # Class for dropdown styling
-            # Grouping Dropdown
-            html.Div([
-                html.H4("Group By:"),
+                html.H4("Variable Select:"),
                 dcc.Dropdown(
-                    id='grouping-selector',
-                    options=[
-                        {'label': 'Year', 'value': 'Year'},
-                        {'label': 'Month', 'value': 'Month'}
-                    ],
-                    value='Year',  # Default selection
+                    id='rollup-dropdown',
+                    options=options,
+                    value='Name',
                     clearable=False
-                )
-            ], id='grouping-dropdown-container', style={'display': 'none'}),  # Initially hidden
+                ),
+                # Grouping Dropdown
+                html.Div([
+                    html.H4("Group By:"),
+                    dcc.Dropdown(
+                        id='grouping-selector',
+                        options=[
+                            {'label': 'Year', 'value': 'Year'},
+                            {'label': 'Month', 'value': 'Month'}
+                        ],
+                        value='Year',  # Default selection
+                        clearable=False
+                    )
+                ], id='grouping-dropdown-container'),  # No longer hidden; now directly below the main dropdown
+            ], className='dropdown-container'),  # Class for dropdown styling
 
             html.Div(id='output-div', className='output-container')  # Output div
         ])
@@ -482,10 +499,10 @@ def update_output(selected_value, grouping, current_tab):
         # Define a mapping of selected values to DataFrame columns and titles
         options = {
             'Release date': {
-                'x': 'release_date',
+                'x': 'release_year',  # Change this to 'release_year' or 'release_month' based on grouping
                 'y': 'num_games',
                 'title': 'Number of Games by Release Date',
-                'x_label': 'Release Date',
+                'x_label': 'Release Year',  # Update accordingly
                 'y_label': 'Total Games'
             },
             'Genre': {
@@ -528,6 +545,11 @@ def update_output(selected_value, grouping, current_tab):
         df = fetch_roll_up_data(engine, selected_value, grouping)
         if selected_value in options:
             params = options[selected_value]
+
+            # Adjust x column based on grouping if needed
+            if selected_value == 'Release date':
+                params['x'] = 'release_year' if grouping == 'Year' else 'release_month'
+
             df = df.sort_values(by=params['y'], ascending=False)
             fig = px.bar(df, x=params['x'], y=params['y'],
                          title=params['title'],
