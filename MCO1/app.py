@@ -332,7 +332,7 @@ def load_data(engine, df):
         print(f"An error occurred: {e}")
 
 
-def fetch_roll_up_data(connection):
+def fetch_roll_up_data(engine):
     query = """
     SELECT Genres.genre_name, COUNT(Games.id) AS num_games
     FROM Games
@@ -340,10 +340,10 @@ def fetch_roll_up_data(connection):
     JOIN Genres ON GameGenres.genre_id = Genres.id
     GROUP BY Genres.genre_name;
     """
-    df = pd.read_sql(query, connection)
-    return df
+    with engine.connect() as connection:
+        return pd.read_sql(query, connection)
 
-def fetch_drill_down_data(connection):
+def fetch_drill_down_data(engine):
     query = """
         SELECT Genres.genre_name, Developers.developer_name, COUNT(Games.id) AS num_games
         FROM Games
@@ -353,7 +353,8 @@ def fetch_drill_down_data(connection):
         JOIN Developers ON GameDevelopers.developer_id = Developers.id
         GROUP BY Genres.genre_name, Developers.developer_name;
     """
-    return pd.read_sql(query, connection)
+    with engine.connect() as connection:
+        return pd.read_sql(query, connection)
 
 # Database configuration
 db_config = {
@@ -399,14 +400,14 @@ app.layout = html.Div([
 
 def render_content(tab):
     if tab == 'tab-1':
-        df = fetch_roll_up_data(connection)
+        df = fetch_roll_up_data(engine)
 
         fig = px.bar(df, x="genre_name", y="num_games", title="Number of Games per Genre")
 
         return dcc.Graph(figure=fig)
     elif tab == 'tab-2':
         # Sunburst drill-down for games by genre and developer
-        df = fetch_drill_down_data(connection)  # This function should fetch genre, developer, and count data
+        df = fetch_drill_down_data(engine)  # This function fetches genre, developer, and count data
 
         fig = px.sunburst(
             df,
@@ -414,7 +415,6 @@ def render_content(tab):
             values='num_games',
             title="Drill-Down: Games by Genre and Developer"
         )
-
         return html.Div([
             html.H2("Drill-Down Operation: Games by Genre and Developer"),
             dcc.Graph(id="drilldown-sunburst", figure=fig),
@@ -435,6 +435,5 @@ def render_content(tab):
             html.P("Information about the OLAP operations dashboard goes here.")
         ])
     return html.Div()
-
 if __name__ == '__main__':
     app.run_server(debug=False)
