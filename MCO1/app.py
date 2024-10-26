@@ -7,6 +7,9 @@ import numpy as np
 import pymysql
 import dash_bootstrap_components as dbc
 import plotly.express as px
+import os
+from sqlalchemy import create_engine
+from sqlalchemy import text
 from setuptools.installer import fetch_build_egg
 
 # Download latest version
@@ -15,7 +18,7 @@ path = kagglehub.dataset_download("fronkongames/steam-games-dataset")
 print("Path to dataset files:", path)
 
 # Load CSV file
-file_path = "C:/Users/Lexrey/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv"
+file_path = os.path.expanduser("~/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv")
 df = pd.read_csv(file_path, encoding='utf-8', nrows=1000) # nrows = 100 for testing, remove in production
 
 # reset the index and move the index values to a new 'AppID' column
@@ -45,7 +48,7 @@ df = df.map(lambda x: None if isinstance(x, list) and len(x) == 0 else (np.nan i
 # Replace NaN values with 'None' (which MySQL will interpret as NULL)
 df = df.where(pd.notnull(df), None)
 
-def load_data(connection, df):
+def load_data(engine, df):
     try:
         # Delete Queries
         delete_queries = [
@@ -74,43 +77,35 @@ def load_data(connection, df):
                                metacritic_score, achievements, recommendations, user_score, 
                                positive, negative, estimated_owners, average_playtime_forever, average_playtime_2weeks, 
                                median_playtime_forever, median_playtime_2weeks, peak_ccu)
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-                    %s, %s, %s, %s, %s, %s)
+            VALUES (:id, :name, :release_date, :required_age, :price, :dlc_count, :about_the_game, :reviews, 
+                    :header_image, :support_email, :onWindows, :onMac, :onLinux, 
+                    :metacritic_score, :achievements, :recommendations, :user_score, 
+                    :positive, :negative, :estimated_owners, :average_playtime_forever, :average_playtime_2weeks, 
+                    :median_playtime_forever, :median_playtime_2weeks, :peak_ccu)
         """
-        insert_movies_query = "INSERT INTO GameMovies (game_id, movies_link) VALUES (%s, %s)"
-        insert_screenshot_query = "INSERT INTO GameScreenshots (game_id, screenshot_link) VALUES (%s, %s)"
-        insert_tag_query = "INSERT IGNORE INTO Tags (tag_name) VALUES (%s)"
-        insert_genre_query = "INSERT IGNORE INTO Genres (genre_name) VALUES (%s)"
-        insert_category_query = "INSERT IGNORE INTO Categories (category_name) VALUES (%s)"
-        insert_publisher_query = "INSERT IGNORE INTO Publishers (publisher_name) VALUES (%s)"
-        insert_developer_query = "INSERT IGNORE INTO Developers (developer_name) VALUES (%s)"
-        insert_languages_query = "INSERT IGNORE INTO Languages (language_name) VALUES (%s)"
+        insert_movies_query = "INSERT INTO GameMovies (game_id, movies_link) VALUES (:game_id, :movies_link)"
+        insert_screenshot_query = "INSERT INTO GameScreenshots (game_id, screenshot_link) VALUES (:game_id, :screenshot_link)"
+        insert_tag_query = "INSERT IGNORE INTO Tags (tag_name) VALUES (:tag_name)"
+        insert_genre_query = "INSERT IGNORE INTO Genres (genre_name) VALUES (:genre_name)"
+        insert_category_query = "INSERT IGNORE INTO Categories (category_name) VALUES (:category_name)"
+        insert_publisher_query = "INSERT IGNORE INTO Publishers (publisher_name) VALUES (:publisher_name)"
+        insert_developer_query = "INSERT IGNORE INTO Developers (developer_name) VALUES (:developer_name)"
+        insert_languages_query = "INSERT IGNORE INTO Languages (language_name) VALUES (:language_name)"
 
         # Linking queries
-        insert_game_tag_query = "INSERT INTO GameTags (game_id, tag_id) VALUES (%s, %s)"
-        insert_game_genre_query = "INSERT INTO GameGenres (game_id, genre_id) VALUES (%s, %s)"
-        insert_game_category_query = "INSERT IGNORE INTO GameCategories (game_id, category_id) VALUES (%s, %s)"
-        insert_game_publisher_query = "INSERT IGNORE INTO GamePublishers (game_id, publisher_id) VALUES (%s, %s)"
-        insert_game_developer_query = "INSERT IGNORE INTO GameDevelopers (game_id, developer_id) VALUES (%s, %s)"
-        insert_supported_languages_query = "INSERT IGNORE INTO Supported_Languages (game_id, language_id) VALUES (%s, %s)"
-        insert_full_audio_languages_query = "INSERT IGNORE INTO Full_Audio_Languages (game_id, language_id) VALUES (%s, %s)"
+        insert_game_tag_query = "INSERT IGNORE INTO GameTags (game_id, tag_id) VALUES (:game_id, :tag_id)"
+        insert_game_genre_query = "INSERT IGNORE INTO GameGenres (game_id, genre_id) VALUES (:game_id, :genre_id)"
+        insert_game_category_query = "INSERT IGNORE INTO GameCategories (game_id, category_id) VALUES (:game_id, :category_id)"
+        insert_game_publisher_query = "INSERT IGNORE INTO GamePublishers (game_id, publisher_id) VALUES (:game_id, :publisher_id)"
+        insert_game_developer_query = "INSERT IGNORE INTO GameDevelopers (game_id, developer_id) VALUES (:game_id, :developer_id)"
+        insert_supported_languages_query = "INSERT IGNORE INTO Supported_Languages (game_id, language_id) VALUES (:game_id, :language_id)"
+        insert_full_audio_languages_query = "INSERT IGNORE INTO Full_Audio_Languages (game_id, language_id) VALUES (:game_id, :language_id)"
 
-        with connection.cursor() as cursor:
+        with engine.begin() as connection:  # Automatically handles transaction commit/rollback
             # Clear tables
             for query in delete_queries:
-                cursor.execute(query)
+                connection.execute(text(query))
             print("Cleared tables successfully.")
-
-            # Reset AUTO_INCREMENT values to 1
-            cursor.execute("ALTER TABLE GameMovies AUTO_INCREMENT = 1;")
-            cursor.execute("ALTER TABLE GameScreenshots AUTO_INCREMENT = 1;")
-            cursor.execute("ALTER TABLE Tags AUTO_INCREMENT = 1;")
-            cursor.execute("ALTER TABLE Genres AUTO_INCREMENT = 1;")
-            cursor.execute("ALTER TABLE Categories AUTO_INCREMENT = 1;")
-            cursor.execute("ALTER TABLE Publishers AUTO_INCREMENT = 1;")
-            cursor.execute("ALTER TABLE Developers AUTO_INCREMENT = 1;")
-            cursor.execute("ALTER TABLE Languages AUTO_INCREMENT = 1;")
-            print("AUTO_INCREMENT values reset successfully.")
 
             # Prepare batch insert data
             games_data = []
@@ -130,32 +125,58 @@ def load_data(connection, df):
             supported_languages_data = []
             full_audio_languages_data = []
 
+            # Prepare maps for IDs
+            tag_id_map = {}
+            genre_id_map = {}
+            category_id_map = {}
+            publisher_id_map = {}
+            developer_id_map = {}
+            language_id_map = {}
+
             for _, row in df.iterrows():
                 game_id = row['AppID']
                 try:
                     # Games data
-                    game_data = (
-                        row['AppID'], row['Name'], row['Release date'], row['Required age'], row['Price'],
-                        row['DiscountDLC count'], row['About the game'], row['Reviews'],
-                        row['Header image'], row['Support email'], row['Windows'], row['Mac'],
-                        row['Linux'], row['Metacritic score'], row['Achievements'], row['Recommendations'],
-                        row['User score'], row['Positive'], row['Negative'], row['Estimated owners'],
-                        row['Average playtime forever'], row['Average playtime two weeks'],
-                        row['Median playtime forever'], row['Median playtime two weeks'], row['Peak CCU']
-                    )
+                    game_data = {
+                        'id': row['AppID'],
+                        'name': row['Name'],
+                        'release_date': row['Release date'],
+                        'required_age': row['Required age'],
+                        'price': row['Price'],
+                        'dlc_count': row['DiscountDLC count'],
+                        'about_the_game': row['About the game'],
+                        'reviews': row['Reviews'],
+                        'header_image': row['Header image'],
+                        'support_email': row['Support email'],
+                        'onWindows': row['Windows'],
+                        'onMac': row['Mac'],
+                        'onLinux': row['Linux'],
+                        'metacritic_score': row['Metacritic score'],
+                        'achievements': row['Achievements'],
+                        'recommendations': row['Recommendations'],
+                        'user_score': row['User score'],
+                        'positive': row['Positive'],
+                        'negative': row['Negative'],
+                        'estimated_owners': row['Estimated owners'],
+                        'average_playtime_forever': row['Average playtime forever'],
+                        'average_playtime_2weeks': row['Average playtime two weeks'],
+                        'median_playtime_forever': row['Median playtime forever'],
+                        'median_playtime_2weeks': row['Median playtime two weeks'],
+                        'peak_ccu': row['Peak CCU']
+                    }
                     games_data.append(game_data)
 
                     # Movies
                     if 'Movies' in row and row['Movies']:
                         movies_links = row['Movies'].split(',')
                         for movies_link in movies_links:
-                            movies_data.append((game_id, movies_link.strip()))
+                            movies_data.append({'game_id': game_id, 'movies_link': movies_link.strip()})
 
                     # Screenshots
                     if 'Screenshots' in row and row['Screenshots']:
                         screenshot_links = row['Screenshots'].split(',')
                         for screenshot_link in screenshot_links:
-                            screenshots_data.append((game_id, screenshot_link.strip()))
+                            screenshots_data.append({'game_id': game_id, 'screenshot_link': screenshot_link.strip()})
 
                     # Genres
                     if 'Genres' in row and row['Genres']:
@@ -218,73 +239,77 @@ def load_data(connection, df):
             # Execute batch insertions
             try:
                 # Insert main data
-                cursor.executemany(insert_game_query, games_data)
+                connection.execute(text(insert_game_query), games_data)
                 print("Inserted data into games table.")
-                cursor.executemany(insert_movies_query, movies_data)
+                connection.execute(text(insert_movies_query), movies_data)
                 print("Inserted data into movies table.")
-                cursor.executemany(insert_screenshot_query, screenshots_data)
+                connection.execute(text(insert_screenshot_query), screenshots_data)
                 print("Inserted data into screenshots table.")
-                cursor.executemany(insert_genre_query, [(genre,) for genre in genres_data])
+                connection.execute(text(insert_genre_query), [{'genre_name': genre} for genre in genres_data])
                 print("Inserted data into genres table.")
-                cursor.executemany(insert_category_query, [(category,) for category in categories_data])
+                connection.execute(text(insert_category_query), [{'category_name': category} for category in categories_data])
                 print("Inserted data into categories table.")
-                cursor.executemany(insert_languages_query, [(language,) for language in languages_data])
+                connection.execute(text(insert_languages_query), [{'language_name': language} for language in languages_data])
                 print("Inserted data into languages table.")
+                connection.execute(text(insert_publisher_query), [{'publisher_name': publisher} for publisher in publishers_data])
+                print("Inserted data into publishers table.")
+                connection.execute(text(insert_developer_query), [{'developer_name': developer} for developer in developers_data])
+                print("Inserted data into developers table.")
+                connection.execute(text(insert_tag_query), [{'tag_name': tag} for tag in tags_data])
+                print("Inserted data into tags table.")
 
-                if publishers_data:
-                    cursor.executemany(insert_publisher_query, [(publisher,) for publisher in publishers_data if publisher.strip()])
-                    print("Inserted data into publishers table.")
-                if developers_data:
-                    cursor.executemany(insert_developer_query, [(developer,) for developer in developers_data if developer.strip()])
-                cursor.executemany(insert_tag_query, [(tag,) for tag in tags_data])
                 print("Inserted data into main tables.")
 
                 # Fetch all IDs in bulk for linking
-                cursor.execute("SELECT id, genre_name FROM Genres")
-                genre_id_map = {name: id for id, name in cursor.fetchall()}
+                result = connection.execute(text("SELECT id, genre_name FROM Genres"))
+                genre_id_map = {name: id for id, name in result.fetchall()}
 
-                cursor.execute("SELECT id, category_name FROM Categories")
-                category_id_map = {name: id for id, name in cursor.fetchall()}
+                result = connection.execute(text("SELECT id, category_name FROM Categories"))
+                category_id_map = {name: id for id, name in result.fetchall()}
 
-                cursor.execute("SELECT id, language_name FROM Languages")
-                language_id_map = {name: id for id, name in cursor.fetchall()}
+                result = connection.execute(text("SELECT id, language_name FROM Languages"))
+                language_id_map = {name: id for id, name in result.fetchall()}
 
-                cursor.execute("SELECT id, publisher_name FROM Publishers")
-                publisher_id_map = {name: id for id, name in cursor.fetchall()}
+                result = connection.execute(text("SELECT id, publisher_name FROM Publishers"))
+                publisher_id_map = {name: id for id, name in result.fetchall()}
 
-                cursor.execute("SELECT id, developer_name FROM Developers")
-                developer_id_map = {name: id for id, name in cursor.fetchall()}
+                result = connection.execute(text("SELECT id, developer_name FROM Developers"))
+                developer_id_map = {name: id for id, name in result.fetchall()}
 
-                cursor.execute("SELECT id, tag_name FROM Tags")
-                tag_id_map = {name: id for id, name in cursor.fetchall()}
+                result = connection.execute(text("SELECT id, tag_name FROM Tags"))
+                tag_id_map = {name: id for id, name in result.fetchall()}
 
                 # Prepare link data for batch insertion
                 game_genres_link_data = [(game_id, genre_id_map[genre_name]) for game_id, genre_name in game_genres_data if genre_name in genre_id_map]
                 game_categories_link_data = [(game_id, category_id_map[category_name]) for game_id, category_name in game_categories_data if category_name in category_id_map]
                 game_publishers_link_data = [(game_id, publisher_id_map[publisher_name]) for game_id, publisher_name in game_publishers_data if publisher_name in publisher_id_map]
-                support_languages_link_data = [(game_id, language_id_map[language_name]) for game_id, language_name in supported_languages_data if language_name in language_id_map]
+                supported_languages_link_data = [(game_id, language_id_map[language_name]) for game_id, language_name in supported_languages_data if language_name in language_id_map]
                 full_audio_languages_link_data = [(game_id, language_id_map[language_name]) for game_id, language_name in full_audio_languages_data if language_name in language_id_map]
                 game_developers_link_data = [(game_id, developer_id_map[developer_name]) for game_id, developer_name in game_developers_data if developer_name in developer_id_map]
                 game_tags_link_data = [(game_id, tag_id_map[tag_name]) for game_id, tag_name in game_tags_data if tag_name in tag_id_map]
 
-                # Execute link insertions
-                cursor.executemany(insert_game_genre_query, game_genres_link_data)
-                cursor.executemany(insert_game_category_query, game_categories_link_data)
-                cursor.executemany(insert_supported_languages_query, support_languages_link_data)
-                cursor.executemany(insert_full_audio_languages_query, full_audio_languages_link_data)
-                cursor.executemany(insert_game_publisher_query, game_publishers_link_data)
-                cursor.executemany(insert_game_developer_query, game_developers_link_data)
-                cursor.executemany(insert_game_tag_query, game_tags_link_data)
-                print("Inserted linked data successfully.")
+                # Linking
+                connection.execute(text(insert_game_tag_query), game_tags_link_data)
+                print("Inserted data into GameTags table.")
+                connection.execute(text(insert_game_genre_query), game_genres_link_data)
+                print("Inserted data into GameGenres table.")
+                connection.execute(text(insert_game_category_query), game_categories_link_data)
+                print("Inserted data into GameCategories table.")
+                connection.execute(text(insert_game_publisher_query), game_publishers_link_data)
+                print("Inserted data into GamePublishers table.")
+                connection.execute(text(insert_game_developer_query), game_developers_link_data)
+                print("Inserted data into GameDevelopers table.")
+                connection.execute(text(insert_supported_languages_query), supported_languages_link_data)
+                print("Inserted data into Supported_Languages table.")
+                connection.execute(text(insert_full_audio_languages_query), full_audio_languages_link_data)
+                print("Inserted data into Full_Audio_Languages table.")
 
-            except Exception as inner_ex:
-                print(f"Error during batch insertion: {inner_ex}")
-
-        connection.commit()
-        print("Data loaded successfully.")
+                print("Data loaded successfully.")
+            except Exception as e:
+                print(f"Error while inserting data: {e}")
 
     except Exception as e:
-        print(f"Error loading data: {e}")
+        print(f"An error occurred: {e}")
 
 
 def fetch_roll_up_data(connection):
@@ -310,51 +335,22 @@ def fetch_drill_down_data(connection):
     """
     return pd.read_sql(query, connection)
 
-
-def update_sunburst(clickData, connection):
-    # Fetch data each time the callback is triggered
-    data = fetch_drill_down_data(connection)
-
-    # Check if a genre was clicked to drill down
-    if clickData:
-        selected_genre = clickData["points"][0]["label"]
-        filtered_data = data[data["genre_name"] == selected_genre]
-    else:
-        # Default view: Show all genres with their developers
-        filtered_data = data
-
-    # Create the Sunburst chart
-    fig = px.sunburst(
-        filtered_data,
-        path=["genre_name", "dev_name"],  # Define the hierarchy
-        values="num_games",
-        title="Number of Games by Genre and Developer",
-    )
-
-    fig.update_traces(hovertemplate="<b>%{label}</b><br>Games: %{value}<extra></extra>")
-    fig.update_layout(margin=dict(t=0, l=0, r=0, b=0))
-
-    return fig
 # Database configuration
 db_config = {
     'host': 'localhost',
     'user': 'root',
     'password': '123',
-    'database': 'steam'
+    'database': 'steam',
+    'dialect': 'mysql+pymysql'  # Specify the dialect and driver
 }
 
-# Create a connection using pymysql
+# Create a connection using SQLAlchemy
 try:
-    connection = pymysql.connect(
-        host=db_config['host'],
-        user=db_config['user'],
-        password=db_config['password'],
-        database=db_config['database'],
-		autocommit=True
-    )
+    # Create the SQLAlchemy engine
+    engine = create_engine(f"{db_config['dialect']}://{db_config['user']}:{db_config['password']}@{db_config['host']}/{db_config['database']}", echo=True)
 
     # Load the data into the database
-    load_data(connection, df)
+    load_data(engine, df)  # Modify load_data to accept an SQLAlchemy engine
 
 except Exception as e:
     print(f"Error connecting to the database: {e}")
@@ -375,77 +371,43 @@ app.layout = html.Div([
     html.Div(id='tabs-content', className='dashboard-container')
 ])
 
-options = [
-    {'label': 'Name', 'value': 'Name'},
-    {'label': 'Release Date', 'value': 'Release date'},
-    {'label': 'Genre', 'value': 'Genre'},
-    {'label': 'Price', 'value': 'Price'},
-    {'label': 'User Score', 'value': 'User score'},
-    {'label': 'Estimated Owners', 'value': 'Estimated owners'},
-    {'label': 'Peak CCU', 'value': 'Peak CCU'}
-]
-
-
 # Callback to update the content based on selected tab
 @app.callback(
     Output('tabs-content', 'children'),
-    # ("drilldown-sunburst", "figure"),
     Input('tabs', 'value'),
-    # Input("drilldown-sunburst", "clickData")
 )
 
 def render_content(tab):
     if tab == 'tab-1':
-        return html.Div([  # Return a single Div that contains both components
-            html.Div([  # Dropdown container
-            html.H4("Variable Select:"),
-            dcc.Dropdown(
-                id='rollup-dropdown',
-                options=options,
-                value='Name',
-                clearable=False
-            )
-        ], className='dropdown-container'),  # Class for dropdown styling
-            html.Div(id='output-div', className='output-container')  # Output div
-        ])
+        df = fetch_roll_up_data(connection)
+
+        fig = px.bar(df, x="genre_name", y="num_games", title="Number of Games per Genre")
+
+        return dcc.Graph(figure=fig)
     elif tab == 'tab-2':
+        # Sunburst drill-down for games by genre and developer
+        df = fetch_drill_down_data(connection)  # This function should fetch genre, developer, and count data
+
+        fig = px.sunburst(
+            df,
+            path=['genre_name', 'developer_name'],
+            values='num_games',
+            title="Drill-Down: Games by Genre and Developer"
+        )
+
         return html.Div([
-            html.Div([  # Dropdown container
-                html.H4("Variable Select:"),
-                dcc.Dropdown(
-                    id='drilldown-dropdown',
-                    options=options,
-                    value='Name',
-                    clearable=False
-                )
-            ], className='dropdown-container'),  # Class for dropdown styling
-            html.Div(id='output-div', className='output-container')  # Output div
+            html.H2("Drill-Down Operation: Games by Genre and Developer"),
+            dcc.Graph(id="drilldown-sunburst", figure=fig),
         ])
     elif tab == 'tab-3':
         return html.Div([
-            html.Div([  # Dropdown container
-                html.H4("Variable Select:"),
-                dcc.Dropdown(
-                    id='slice-dropdown',
-                    options=options,
-                    value='Name',
-                    clearable=False
-                )
-            ], className='dropdown-container'),  # Class for dropdown styling
-            html.Div(id='output-div', className='output-container')  # Output div
+            html.H1("Slice Operations"),
+            html.P("Details about slice operations go here.")
         ])
     elif tab == 'tab-4':
         return html.Div([
-            html.Div([  # Dropdown container
-                html.H4("Variable Select:"),
-                dcc.Dropdown(
-                    id='dice-dropdown',
-                    options=options,
-                    value='Name',
-                    clearable=False
-                )
-            ], className='dropdown-container'),  # Class for dropdown styling
-            html.Div(id='output-div', className='output-container')  # Output div
+            html.H1("Dice Operations"),
+            html.P("Details about dice operations go here.")
         ])
     elif tab == 'tab-5':
         return html.Div([
@@ -453,25 +415,6 @@ def render_content(tab):
             html.P("Information about the OLAP operations dashboard goes here.")
         ])
     return html.Div()
-
-@app.callback(
-    Output('output-div', 'children'),
-    Input('slice-dropdown', 'value'),
-    Input('tabs', 'value')  # Include the current tab as input
-)
-def update_output(selected_value, current_tab):
-    # Only update if we are in tab-1
-    if current_tab == 'tab-1':
-        # Fetch data for roll-up operation
-        df = fetch_roll_up_data(connection)
-        if selected_value == 'Name':
-            return [html.Div("You selected: Name")]
-        elif selected_value == 'Genre':
-            fig = px.bar(df, x="genre_name", y="num_games", title="Number of Games per Genre")
-            return dcc.Graph(figure=fig)
-        elif selected_value == 'Release Date':
-            return html.Div("You selected: Release Year.")
-    return html.Div()  # Return empty div for other tabs
 
 if __name__ == '__main__':
     app.run_server(debug=False)
