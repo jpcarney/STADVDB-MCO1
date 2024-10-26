@@ -15,7 +15,8 @@ path = kagglehub.dataset_download("fronkongames/steam-games-dataset")
 print("Path to dataset files:", path)
 
 # Load CSV file
-file_path = "C:/Users/narut/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv"
+#narut
+file_path = "C:/Users/Lexrey/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv"
 df = pd.read_csv(file_path, encoding='utf-8', nrows=1000) # nrows = 100 for testing, remove in production
 
 # reset the index and move the index values to a new 'AppID' column
@@ -30,13 +31,14 @@ df[cols_to_shift] = df[cols_to_shift].shift(periods=1, axis=1)
 # move index values to the 'AppID' column
 df['AppID'] = df['index']
 
-# Drop the temp 'index' column if exists
-if 'index' in df.columns:
-    df.drop(columns=['index'], inplace=True)
+# Drop temporary column
+df.drop(columns=['index'], inplace=True)
 
-# Drop the 'score_rank' column if it exists
-if 'Score rank' in df.columns:
-    df.drop('Score rank', axis=1, inplace=True)
+# Drop unneeded columns with more than 50% null values
+df.drop(['Notes', 'Score rank', 'Metacritic url', 'Support url', 'Website'], axis=1, inplace=True)
+
+# Drop rows with empty rows
+df.dropna(subset=['Name'], inplace=True)
 
 # Replace empty strings with NaN and empty lists with None
 df = df.map(lambda x: None if isinstance(x, list) and len(x) == 0 else (np.nan if x == '' else x))
@@ -68,13 +70,13 @@ def load_data(connection, df):
 
         # Insert queries
         insert_game_query = """
-        INSERT INTO Games (id, name, release_date, required_age, price, dlc_count, about_the_game, reviews, 
-                           header_image, website, support_url, support_email, onWindows, onMac, onLinux, 
-                           metacritic_score, metacritic_url, achievements, recommendations, notes, user_score, 
-                           positive, negative, estimated_owners, average_playtime_forever, average_playtime_2weeks, 
-                           median_playtime_forever, median_playtime_2weeks, peak_ccu)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 
-                %s, %s, %s, %s, %s)
+            INSERT INTO Games (id, name, release_date, required_age, price, dlc_count, about_the_game, reviews, 
+                               header_image, support_email, onWindows, onMac, onLinux, 
+                               metacritic_score, achievements, recommendations, user_score, 
+                               positive, negative, estimated_owners, average_playtime_forever, average_playtime_2weeks, 
+                               median_playtime_forever, median_playtime_2weeks, peak_ccu)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                    %s, %s, %s, %s, %s, %s)
         """
         insert_movies_query = "INSERT INTO GameMovies (game_id, movies_link) VALUES (%s, %s)"
         insert_screenshot_query = "INSERT INTO GameScreenshots (game_id, screenshot_link) VALUES (%s, %s)"
@@ -95,7 +97,7 @@ def load_data(connection, df):
         insert_full_audio_languages_query = "INSERT IGNORE INTO Full_Audio_Languages (game_id, language_id) VALUES (%s, %s)"
 
         with connection.cursor() as cursor:
-            # Delete data instead of truncate to avoid foreign key issues
+            # Clear tables
             for query in delete_queries:
                 cursor.execute(query)
             print("Cleared tables successfully.")
@@ -136,10 +138,8 @@ def load_data(connection, df):
                     game_data = (
                         row['AppID'], row['Name'], row['Release date'], row['Required age'], row['Price'],
                         row['DiscountDLC count'], row['About the game'], row['Reviews'],
-                        row['Header image'], row['Website'], row['Support url'],
-                        row['Support email'], row['Windows'], row['Mac'],
-                        row['Linux'], row['Metacritic score'], row['Metacritic url'],
-                        row['Achievements'], row['Recommendations'], row['Notes'],
+                        row['Header image'], row['Support email'], row['Windows'], row['Mac'],
+                        row['Linux'], row['Metacritic score'], row['Achievements'], row['Recommendations'],
                         row['User score'], row['Positive'], row['Negative'], row['Estimated owners'],
                         row['Average playtime forever'], row['Average playtime two weeks'],
                         row['Median playtime forever'], row['Median playtime two weeks'], row['Peak CCU']
