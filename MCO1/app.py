@@ -7,6 +7,7 @@ import dash_bootstrap_components as dbc
 import plotly.express as px
 import os
 from sqlalchemy import create_engine, inspect, text
+import pymysql
 import time
 from sqlalchemy.orm import Session
 from setuptools.installer import fetch_build_egg
@@ -335,6 +336,13 @@ def load_data(engine, df):
 
 def fetch_roll_up_data(engine, selected_column, grouping):
     if selected_column == "Release date":
+        if grouping == "5 Years":
+            query = """
+            SELECT CONCAT(FLOOR(YEAR(release_date) / 5) * 5, '-', FLOOR(YEAR(release_date) / 5) * 5 + 4) AS release_5years,
+                   COUNT(id) AS num_games
+            FROM Games
+            GROUP BY release_5years;
+            """
         if grouping == "Year":
             query = """
             SELECT YEAR(release_date) AS release_year, COUNT(id) AS num_games
@@ -440,6 +448,7 @@ def create_rollup_content():
                 dcc.Dropdown(
                     id='grouping-selector',
                     options=[
+                        {'label': '5 Years', 'value': '5 Years'},
                         {'label': 'Year', 'value': 'Year'},
                         {'label': 'Month', 'value': 'Month'}
                     ],
@@ -553,8 +562,17 @@ def create_output_graph(selected_value, grouping, operation):
     if selected_value in options:
         params = options[selected_value]
 
-        if operation == 'Roll-up' and selected_value == 'Release date':
-            params['x'] = 'release_month' if grouping == 'Month' else 'release_year'
+        if operation == 'Roll-up':
+            if selected_value == 'Release date':
+                if grouping == 'Month':
+                    params['x'] = 'release_month'
+                    params['x_label'] = 'Release Month'
+                elif grouping == 'Year':
+                    params['x'] = 'release_year'
+                    params['x_label'] = 'Release Year'
+                elif grouping == '5 Years':
+                    params['x'] = 'release_5years'
+                    params['x_label'] = 'Release Period'
 
         # Sort the DataFrame by the y value
         if df is not None:
