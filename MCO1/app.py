@@ -567,17 +567,19 @@ def create_output_graph(selected_value, grouping, operation):
                 if grouping == 'Month':
                     params['x'] = 'release_month'
                     params['x_label'] = 'Release Month'
+                    df = df.sort_values(by=params['y'], ascending=False)
                 elif grouping == 'Year':
                     params['x'] = 'release_year'
                     params['x_label'] = 'Release Year'
+                    df = df.sort_values(by=params['y'], ascending=False)
                 elif grouping == '5 Years':
                     params['x'] = 'release_5years'
                     params['x_label'] = 'Release Period'
-
+                    df = df.sort_values(by=params['x'], ascending=True)  # Sort by release period in ascending order
+            if selected_value == 'Genre':
+                df = df.sort_values(by=params['y'], ascending=True)
         # Sort the DataFrame by the y value
         if df is not None:
-            df = df.sort_values(by=params['y'], ascending=False)
-
             # Create the bar plot
             fig = px.bar(df, x=params['x'], y=params['y'],
                          title=params['title'],
