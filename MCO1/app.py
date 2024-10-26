@@ -381,6 +381,11 @@ except Exception as e:
 
 # https://github.com/cordb/gutensearch
 
+from dash import Dash, dcc, html, callback_context
+import dash_bootstrap_components as dbc
+from dash.dependencies import Input, Output
+import plotly.express as px
+
 # Initialize the Dash app with Bootstrap styling
 app = Dash(__name__, external_stylesheets=[dbc.themes.FLATLY])
 
@@ -409,75 +414,15 @@ options = [
     Output('tabs-content', 'children'),
     Input('tabs', 'value'),
 )
-
 def render_content(tab):
     if tab == 'tab-1':
-        return html.Div([
-            # Container for the main dropdown and grouping dropdown
-            html.Div([  # Dropdown container
-                html.H4("Variable Select:"),
-                dcc.Dropdown(
-                    id='rollup-dropdown',
-                    options=options,
-                    value='Name',
-                    clearable=False
-                ),
-                # Grouping Dropdown
-                html.Div([
-                    html.H4("Group By:"),
-                    dcc.Dropdown(
-                        id='grouping-selector',
-                        options=[
-                            {'label': 'Year', 'value': 'Year'},
-                            {'label': 'Month', 'value': 'Month'}
-                        ],
-                        value='Year',  # Default selection
-                        clearable=False
-                    )
-                ], id='grouping-dropdown-container'),  # No longer hidden; now directly below the main dropdown
-            ], className='dropdown-container'),  # Class for dropdown styling
-
-            html.Div(id='output-div', className='output-container')  # Output div
-        ])
+        return create_rollup_content()
     elif tab == 'tab-2':
-        return html.Div([
-            html.Div([  # Dropdown container
-                html.H4("Variable Select:"),
-                dcc.Dropdown(
-                    id='drilldown-dropdown',
-                    options=options,
-                    value='Name',
-                    clearable=False
-                )
-            ], className='dropdown-container'),  # Class for dropdown styling
-            html.Div(id='output-div', className='output-container')  # Output div
-        ])
+        return create_drilldown_content()
     elif tab == 'tab-3':
-        return html.Div([
-            html.Div([  # Dropdown container
-                html.H4("Variable Select:"),
-                dcc.Dropdown(
-                    id='slice-dropdown',
-                    options=options,
-                    value='Name',
-                    clearable=False
-                )
-            ], className='dropdown-container'),  # Class for dropdown styling
-            html.Div(id='output-div', className='output-container')  # Output div
-        ])
+        return create_slice_content()
     elif tab == 'tab-4':
-        return html.Div([
-            html.Div([  # Dropdown container
-                html.H4("Variable Select:"),
-                dcc.Dropdown(
-                    id='dice-dropdown',
-                    options=options,
-                    value='Name',
-                    clearable=False
-                )
-            ], className='dropdown-container'),  # Class for dropdown styling
-            html.Div(id='output-div', className='output-container')  # Output div
-        ])
+        return create_dice_content()
     elif tab == 'tab-5':
         return html.Div([
             html.H1("About This Dashboard"),
@@ -485,92 +430,155 @@ def render_content(tab):
         ])
     return html.Div()
 
-# Callback to show/hide the grouping dropdown
+def create_rollup_content():
+    return html.Div([
+        html.Div([  # Dropdown container
+            html.H4("Variable Select:"),
+            dcc.Dropdown(
+                id='rollup-dropdown',
+                options=options,
+                value='Release date',
+                clearable=False
+            ),
+            html.Div([
+                html.H4("Group By:"),
+                dcc.Dropdown(
+                    id='grouping-selector',
+                    options=[
+                        {'label': 'Year', 'value': 'Year'},
+                        {'label': 'Month', 'value': 'Month'}
+                    ],
+                    value='Year',
+                    clearable=False
+                )
+            ], id='grouping-dropdown-container'),
+        ], className='dropdown-container'),
+        html.Div(id='rollup-output', className='output-container')  # Output div
+    ])
+
+def create_drilldown_content():
+    return html.Div([
+        html.Div([  # Dropdown container
+            html.H4("Variable Select:"),
+            dcc.Dropdown(
+                id='drilldown-dropdown',
+                options=options,
+                value='Release date',
+                clearable=False
+            )
+        ], className='dropdown-container'),
+        html.Div(id='drilldown-output', className='output-container')  # Output div
+    ])
+
+def create_slice_content():
+    return html.Div([
+        html.Div([  # Dropdown container
+            html.H4("Variable Select:"),
+            dcc.Dropdown(
+                id='slice-dropdown',
+                options=options,
+                value='Release date',
+                clearable=False
+            )
+        ], className='dropdown-container'),
+        html.Div(id='slice-output', className='output-container')  # Output div
+    ])
+
+def create_dice_content():
+    return html.Div([
+        html.Div([  # Dropdown container
+            html.H4("Variable Select:"),
+            dcc.Dropdown(
+                id='dice-dropdown',
+                options=options,
+                value='Release date',
+                clearable=False
+            )
+        ], className='dropdown-container'),
+        html.Div(id='dice-output', className='output-container')  # Output div
+    ])
+
+# Callback for Roll-up tab
 @app.callback(
-    Output('output-div', 'children'),
+    Output('rollup-output', 'children'),
     Input('rollup-dropdown', 'value'),
-    Input('grouping-selector', 'value'),  # Add this input
-    Input('tabs', 'value')  # Include the current tab as input
+    Input('grouping-selector', 'value'),
 )
+def update_rollup_output(selected_value, grouping):
+    return create_output_graph(selected_value, grouping, 'Roll-up')
 
-def update_output(selected_value, grouping, current_tab):
-    # Only update if we are in tab-1
-    if current_tab == 'tab-1':
-        # Define a mapping of selected values to DataFrame columns and titles
-        options = {
-            'Release date': {
-                'x': 'release_year',  # Change this to 'release_year' or 'release_month' based on grouping
-                'y': 'num_games',
-                'title': 'Number of Games by Release Date',
-                'x_label': 'Release Year',  # Update accordingly
-                'y_label': 'Total Games'
-            },
-            'Genre': {
-                'x': 'genre_name',
-                'y': 'num_games',
-                'title': 'Number of Games per Genre',
-                'x_label': 'Game Genre',
-                'y_label': 'Total Games'
-            },
-            'Price': {
-                'x': 'price',
-                'y': 'num_games',
-                'title': 'Number of Games by Price',
-                'x_label': 'Price',
-                'y_label': 'Total Games'
-            },
-            'User score': {
-                'x': 'user_score',
-                'y': 'num_games',
-                'title': 'Number of Games by User Score',
-                'x_label': 'User Score',
-                'y_label': 'Total Games'
-            },
-            'Estimated owners': {
-                'x': 'estimated_owners',
-                'y': 'num_games',
-                'title': 'Number of Games by Estimated Owners',
-                'x_label': 'Estimated Owners',
-                'y_label': 'Total Games'
-            },
-            'Peak CCU': {
-                'x': 'peak_ccu',
-                'y': 'num_games',
-                'title': 'Number of Games by Peak CCU',
-                'x_label': 'Peak CCU',
-                'y_label': 'Total Games'
-            }
-        }
+# Callback for Drill-down tab
+@app.callback(
+    Output('drilldown-output', 'children'),
+    Input('drilldown-dropdown', 'value'),
+)
+def update_drilldown_output(selected_value):
+    return create_output_graph(selected_value, None, 'Drill-down')
 
-        df = fetch_roll_up_data(engine, selected_value, grouping)
+# Callback for Slice tab
+@app.callback(
+    Output('slice-output', 'children'),
+    Input('slice-dropdown', 'value'),
+)
+def update_slice_output(selected_value):
+    return create_output_graph(selected_value, None, 'Slice')
 
-        if selected_value in options:
-            params = options[selected_value]
+# Callback for Dice tab
+@app.callback(
+    Output('dice-output', 'children'),
+    Input('dice-dropdown', 'value'),
+)
+def update_dice_output(selected_value):
+    return create_output_graph(selected_value, None, 'Dice')
 
-            # Adjust x column based on grouping for 'Release date'
-            if selected_value == 'Release date':
-                params['x'] = 'release_month' if grouping == 'Month' else 'release_year'
-                params[
-                    'x_label'] = 'Release Month' if grouping == 'Month' else 'Release Year'  # Update x_label accordingly
+# General function to create output graphs
+def create_output_graph(selected_value, grouping, operation):
+    options = {
+        'Release date': {'x': 'release_year', 'y': 'num_games', 'title': 'Number of Games by Release Date'},
+        'Genre': {'x': 'genre_name', 'y': 'num_games', 'title': 'Number of Games per Genre'},
+        'Price': {'x': 'price', 'y': 'num_games', 'title': 'Number of Games by Price'},
+        'User score': {'x': 'user_score', 'y': 'num_games', 'title': 'Number of Games by User Score'},
+        'Estimated owners': {'x': 'estimated_owners', 'y': 'num_games', 'title': 'Number of Games by Estimated Owners'},
+        'Peak CCU': {'x': 'peak_ccu', 'y': 'num_games', 'title': 'Number of Games by Peak CCU'},
+    }
 
-            # Sort the DataFrame by the y value
+    # Mock DataFrame fetch
+    df = fetch_roll_up_data(engine, selected_value, grouping) if operation == 'Roll-up' else None
+
+    if selected_value in options:
+        params = options[selected_value]
+
+        if operation == 'Roll-up' and selected_value == 'Release date':
+            params['x'] = 'release_month' if grouping == 'Month' else 'release_year'
+
+        # Sort the DataFrame by the y value
+        if df is not None:
             df = df.sort_values(by=params['y'], ascending=False)
 
             # Create the bar plot
             fig = px.bar(df, x=params['x'], y=params['y'],
                          title=params['title'],
-                         labels={params['x']: params['x_label'], params['y']: params['y_label']})
+                         labels={params['x']: params['x'], params['y']: 'Total Games'})
             return dcc.Graph(figure=fig)
 
-    return html.Div()  # Return empty div for other tabs
-@app.callback(
-    Output('grouping-dropdown-container', 'style'),
-    Input('rollup-dropdown', 'value')
-)
-def update_grouping_dropdown(selected_value):
-    if selected_value == 'Release date':
-        return {'display': 'block'}  # Show the dropdown
-    return {'display': 'none'}  # Hide the dropdown
+    # Drill-down operation simulation
+    if operation == 'Drill-down':
+        if selected_value == 'Release date':
+            # Example drill-down data for "Release date"
+            drilldown_data = {
+                'Game Name': ['Game A', 'Game B', 'Game C'],
+                'Release Date': ['2022-01-15', '2022-06-10', '2023-03-20'],
+                'Genre': ['Action', 'Adventure', 'RPG'],
+                'User Score': [8.5, 9.0, 7.5]
+            }
+            df_drilldown = pd.DataFrame(drilldown_data)
+            # Create a bar plot for User Score by Game Name as an example
+            fig = px.bar(df_drilldown, x='Game Name', y='User Score',
+                         title='User Score by Game Name',
+                         labels={'Game Name': 'Game Name', 'User Score': 'User Score'})
+            return dcc.Graph(figure=fig)
+
+    return html.Div("No data available for the selected variable.")
 
 if __name__ == '__main__':
     app.run_server(debug=False)
