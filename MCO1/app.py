@@ -343,7 +343,7 @@ def fetch_roll_up_data(engine, selected_column, grouping):
             """
         elif grouping == "Month":
             query = """
-            SELECT DATE_FORMAT(release_date, '%Y-%m') AS release_month, COUNT(id) AS num_games
+            SELECT DATE_FORMAT(release_date, '%%Y-%%m') AS release_month, COUNT(id) AS num_games
             FROM Games
             GROUP BY release_month;
             """
@@ -543,14 +543,20 @@ def update_output(selected_value, grouping, current_tab):
         }
 
         df = fetch_roll_up_data(engine, selected_value, grouping)
+
         if selected_value in options:
             params = options[selected_value]
 
-            # Adjust x column based on grouping if needed
+            # Adjust x column based on grouping for 'Release date'
             if selected_value == 'Release date':
-                params['x'] = 'release_year' if grouping == 'Year' else 'release_month'
+                params['x'] = 'release_month' if grouping == 'Month' else 'release_year'
+                params[
+                    'x_label'] = 'Release Month' if grouping == 'Month' else 'Release Year'  # Update x_label accordingly
 
+            # Sort the DataFrame by the y value
             df = df.sort_values(by=params['y'], ascending=False)
+
+            # Create the bar plot
             fig = px.bar(df, x=params['x'], y=params['y'],
                          title=params['title'],
                          labels={params['x']: params['x_label'], params['y']: params['y_label']})
