@@ -50,24 +50,25 @@ df = df.where(pd.notnull(df), None)
 
 def load_data(engine, df):
     try:
-        # Delete Queries
-        delete_queries = [
-            "DELETE FROM Games",
-            "DELETE FROM GameMovies",
-            "DELETE FROM GameScreenshots",
-            "DELETE FROM Tags",
-            "DELETE FROM Genres",
-            "DELETE FROM Categories",
-            "DELETE FROM Publishers",
-            "DELETE FROM Developers",
-            "DELETE FROM GameTags",
-            "DELETE FROM GameGenres",
-            "DELETE FROM GameCategories",
-            "DELETE FROM GamePublishers",
-            "DELETE FROM GameDevelopers",
-            "DELETE FROM Languages",
-            "DELETE FROM Supported_Languages",
-            "DELETE FROM Full_Audio_Languages"
+        truncate_queries = [
+            "SET FOREIGN_KEY_CHECKS = 0;",
+            "TRUNCATE TABLE GameTags;",
+            "TRUNCATE TABLE GameGenres;",
+            "TRUNCATE TABLE GameCategories;",
+            "TRUNCATE TABLE GamePublishers;",
+            "TRUNCATE TABLE GameDevelopers;",
+            "TRUNCATE TABLE Languages;",
+            "TRUNCATE TABLE Supported_Languages;",
+            "TRUNCATE TABLE Full_Audio_Languages;",
+            "TRUNCATE TABLE Games;",
+            "TRUNCATE TABLE GameMovies;",
+            "TRUNCATE TABLE GameScreenshots;",
+            "TRUNCATE TABLE Tags;",
+            "TRUNCATE TABLE Genres;",
+            "TRUNCATE TABLE Categories;",
+            "TRUNCATE TABLE Publishers;",
+            "TRUNCATE TABLE Developers;",
+            "SET FOREIGN_KEY_CHECKS = 1;"
         ]
 
         # Insert queries
@@ -103,7 +104,7 @@ def load_data(engine, df):
 
         with engine.begin() as connection:  # Automatically handles transaction commit/rollback
             # Clear tables
-            for query in delete_queries:
+            for query in truncate_queries:
                 connection.execute(text(query))
             print("Cleared tables successfully.")
 
@@ -124,14 +125,6 @@ def load_data(engine, df):
             game_tags_data = []
             supported_languages_data = []
             full_audio_languages_data = []
-
-            # Prepare maps for IDs
-            tag_id_map = {}
-            genre_id_map = {}
-            category_id_map = {}
-            publisher_id_map = {}
-            developer_id_map = {}
-            language_id_map = {}
 
             for _, row in df.iterrows():
                 game_id = row['AppID']
@@ -280,13 +273,40 @@ def load_data(engine, df):
                 tag_id_map = {name: id for id, name in result.fetchall()}
 
                 # Prepare link data for batch insertion
-                game_genres_link_data = [(game_id, genre_id_map[genre_name]) for game_id, genre_name in game_genres_data if genre_name in genre_id_map]
-                game_categories_link_data = [(game_id, category_id_map[category_name]) for game_id, category_name in game_categories_data if category_name in category_id_map]
-                game_publishers_link_data = [(game_id, publisher_id_map[publisher_name]) for game_id, publisher_name in game_publishers_data if publisher_name in publisher_id_map]
-                supported_languages_link_data = [(game_id, language_id_map[language_name]) for game_id, language_name in supported_languages_data if language_name in language_id_map]
-                full_audio_languages_link_data = [(game_id, language_id_map[language_name]) for game_id, language_name in full_audio_languages_data if language_name in language_id_map]
-                game_developers_link_data = [(game_id, developer_id_map[developer_name]) for game_id, developer_name in game_developers_data if developer_name in developer_id_map]
-                game_tags_link_data = [(game_id, tag_id_map[tag_name]) for game_id, tag_name in game_tags_data if tag_name in tag_id_map]
+                game_genres_link_data = [
+                    {'game_id': game_id, 'genre_id': genre_id_map[genre_name]}
+                    for game_id, genre_name in game_genres_data if genre_name in genre_id_map
+                ]
+
+                game_categories_link_data = [
+                    {'game_id': game_id, 'category_id': category_id_map[category_name]}
+                    for game_id, category_name in game_categories_data if category_name in category_id_map
+                ]
+
+                game_publishers_link_data = [
+                    {'game_id': game_id, 'publisher_id': publisher_id_map[publisher_name]}
+                    for game_id, publisher_name in game_publishers_data if publisher_name in publisher_id_map
+                ]
+
+                supported_languages_link_data = [
+                    {'game_id': game_id, 'language_id': language_id_map[language_name]}
+                    for game_id, language_name in supported_languages_data if language_name in language_id_map
+                ]
+
+                full_audio_languages_link_data = [
+                    {'game_id': game_id, 'language_id': language_id_map[language_name]}
+                    for game_id, language_name in full_audio_languages_data if language_name in language_id_map
+                ]
+
+                game_developers_link_data = [
+                    {'game_id': game_id, 'developer_id': developer_id_map[developer_name]}
+                    for game_id, developer_name in game_developers_data if developer_name in developer_id_map
+                ]
+
+                game_tags_link_data = [
+                    {'game_id': game_id, 'tag_id': tag_id_map[tag_name]}
+                    for game_id, tag_name in game_tags_data if tag_name in tag_id_map
+                ]
 
                 # Linking
                 connection.execute(text(insert_game_tag_query), game_tags_link_data)
