@@ -410,26 +410,29 @@ def render_content(tab):
         ])
     elif tab == 'tab-2':
         return html.Div([
-            html.Div([
-                html.H3("Select Variable:"),
+            html.Div([  # Dropdown container
+                html.H4("Variable Select:"),
                 dcc.Dropdown(
                     id='drilldown-dropdown',
                     options=options,
                     value='Name',
                     clearable=False
-                )], className='dropdown-container')
-            # dcc.Graph(id="drilldown-sunburst"),
+                )
+            ], className='dropdown-container'),  # Class for dropdown styling
+            html.Div(id='output-div', className='output-container')  # Output div
         ])
     elif tab == 'tab-3':
         return html.Div([
-                html.Div([
-                    html.H3("Select Variable:"),
-                    dcc.Dropdown(
-                        id='slice-dropdown',
-                        options=options,
-                        value='Name',
-                        clearable=False
-                )], className='dropdown-container')
+            html.Div([  # Dropdown container
+                html.H4("Variable Select:"),
+                dcc.Dropdown(
+                    id='slice-dropdown',
+                    options=options,
+                    value='Name',
+                    clearable=False
+                )
+            ], className='dropdown-container'),  # Class for dropdown styling
+            html.Div(id='output-div', className='output-container')  # Output div
         ])
     elif tab == 'tab-4':
         return html.Div([
