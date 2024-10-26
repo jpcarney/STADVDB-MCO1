@@ -1,15 +1,14 @@
 import ast
-
 import kagglehub
 from dash import Dash, dcc, html, Input, Output
 import pandas as pd
 import numpy as np
-import pymysql
 import dash_bootstrap_components as dbc
 import plotly.express as px
 import os
-from sqlalchemy import create_engine
-from sqlalchemy import text
+from sqlalchemy import create_engine, inspect, text
+import time
+from sqlalchemy.orm import Session
 from setuptools.installer import fetch_build_egg
 
 # Download latest version
@@ -19,7 +18,7 @@ print("Path to dataset files:", path)
 
 # Load CSV file
 file_path = os.path.expanduser("~/.cache/kagglehub/datasets/fronkongames/steam-games-dataset/versions/29/games.csv")
-df = pd.read_csv(file_path, encoding='utf-8', nrows=1000) # nrows = 100 for testing, remove in production
+df = pd.read_csv(file_path, encoding='utf-8', nrows=1000)
 
 # reset the index and move the index values to a new 'AppID' column
 df.reset_index(inplace=True)
@@ -50,27 +49,6 @@ df = df.where(pd.notnull(df), None)
 
 def load_data(engine, df):
     try:
-        truncate_queries = [
-            "SET FOREIGN_KEY_CHECKS = 0;",
-            "TRUNCATE TABLE GameTags;",
-            "TRUNCATE TABLE GameGenres;",
-            "TRUNCATE TABLE GameCategories;",
-            "TRUNCATE TABLE GamePublishers;",
-            "TRUNCATE TABLE GameDevelopers;",
-            "TRUNCATE TABLE Languages;",
-            "TRUNCATE TABLE Supported_Languages;",
-            "TRUNCATE TABLE Full_Audio_Languages;",
-            "TRUNCATE TABLE Games;",
-            "TRUNCATE TABLE GameMovies;",
-            "TRUNCATE TABLE GameScreenshots;",
-            "TRUNCATE TABLE Tags;",
-            "TRUNCATE TABLE Genres;",
-            "TRUNCATE TABLE Categories;",
-            "TRUNCATE TABLE Publishers;",
-            "TRUNCATE TABLE Developers;",
-            "SET FOREIGN_KEY_CHECKS = 1;"
-        ]
-
         # Insert queries
         insert_game_query = """
             INSERT INTO Games (id, name, release_date, required_age, price, dlc_count, about_the_game, reviews, 
@@ -103,10 +81,16 @@ def load_data(engine, df):
         insert_full_audio_languages_query = "INSERT IGNORE INTO Full_Audio_Languages (game_id, language_id) VALUES (:game_id, :language_id)"
 
         with engine.begin() as connection:  # Automatically handles transaction commit/rollback
-            # Clear tables
-            for query in truncate_queries:
-                connection.execute(text(query))
-            print("Cleared tables successfully.")
+
+            # TRUNCATE all tables
+            connection.execute(text("SET FOREIGN_KEY_CHECKS = 0;"))
+            inspector = inspect(engine)
+            tables = inspector.get_table_names()
+            for table in tables:
+                connection.execute(text(f"TRUNCATE TABLE {table};"))
+                print(f"Truncated table: {table}")
+            connection.execute(text("SET FOREIGN_KEY_CHECKS = 1;"))
+            print("All tables truncated successfully.")
 
             # Prepare batch insert data
             games_data = []
@@ -158,7 +142,6 @@ def load_data(engine, df):
                         'peak_ccu': row['Peak CCU']
                     }
                     games_data.append(game_data)
-
                     # Movies
                     if 'Movies' in row and row['Movies']:
                         movies_links = row['Movies'].split(',')
@@ -232,8 +215,9 @@ def load_data(engine, df):
             # Execute batch insertions
             try:
                 # Insert main data
+                print("Inserting games into games table.")
                 connection.execute(text(insert_game_query), games_data)
-                print("Inserted data into games table.")
+
                 connection.execute(text(insert_movies_query), movies_data)
                 print("Inserted data into movies table.")
                 connection.execute(text(insert_screenshot_query), screenshots_data)
@@ -332,27 +316,29 @@ def load_data(engine, df):
         print(f"An error occurred: {e}")
 
 
-def fetch_roll_up_data(engine):
-    query = """
-    SELECT Genres.genre_name, COUNT(Games.id) AS num_games
-    FROM Games
-    JOIN GameGenres ON Games.id = GameGenres.game_id
-    JOIN Genres ON GameGenres.genre_id = Genres.id
-    GROUP BY Genres.genre_name;
-    """
-    with engine.connect() as connection:
-        return pd.read_sql(query, connection)
-
-def fetch_drill_down_data(engine):
-    query = """
-        SELECT Genres.genre_name, Developers.developer_name, COUNT(Games.id) AS num_games
+def fetch_roll_up_data(engine, selected_column, grouping):
+    if selected_column == "Release date":
+        if grouping == "Year":
+            query = """
+            SELECT YEAR(release_date) AS release_year, COUNT(id) AS num_games
+            FROM Games
+            GROUP BY release_year;
+            """
+        elif grouping == "Month":
+            query = """
+            SELECT DATE_FORMAT(release_date, '%Y-%m') AS release_month, COUNT(id) AS num_games
+            FROM Games
+            GROUP BY release_month;
+            """
+    elif selected_column == "Genre":
+        query = """
+        SELECT Genres.genre_name, COUNT(Games.id) AS num_games
         FROM Games
         JOIN GameGenres ON Games.id = GameGenres.game_id
         JOIN Genres ON GameGenres.genre_id = Genres.id
-        JOIN GameDevelopers ON Games.id = GameDevelopers.game_id
-        JOIN Developers ON GameDevelopers.developer_id = Developers.id
-        GROUP BY Genres.genre_name, Developers.developer_name;
-    """
+        GROUP BY Genres.genre_name;
+        """
+
     with engine.connect() as connection:
         return pd.read_sql(query, connection)
 
@@ -393,7 +379,6 @@ app.layout = html.Div([
 ])
 
 options = [
-    {'label': 'Name', 'value': 'Name'},
     {'label': 'Release Date', 'value': 'Release date'},
     {'label': 'Genre', 'value': 'Genre'},
     {'label': 'Price', 'value': 'Price'},
@@ -406,9 +391,7 @@ options = [
 # Callback to update the content based on selected tab
 @app.callback(
     Output('tabs-content', 'children'),
-    # ("drilldown-sunburst", "figure"),
     Input('tabs', 'value'),
-    # Input("drilldown-sunburst", "clickData")
 )
 
 def render_content(tab):
@@ -423,6 +406,20 @@ def render_content(tab):
                 clearable=False
             )
         ], className='dropdown-container'),  # Class for dropdown styling
+            # Grouping Dropdown
+            html.Div([
+                html.H4("Group By:"),
+                dcc.Dropdown(
+                    id='grouping-selector',
+                    options=[
+                        {'label': 'Year', 'value': 'Year'},
+                        {'label': 'Month', 'value': 'Month'}
+                    ],
+                    value='Year',  # Default selection
+                    clearable=False
+                )
+            ], id='grouping-dropdown-container', style={'display': 'none'}),  # Initially hidden
+
             html.Div(id='output-div', className='output-container')  # Output div
         ])
     elif tab == 'tab-2':
@@ -471,23 +468,81 @@ def render_content(tab):
         ])
     return html.Div()
 
+# Callback to show/hide the grouping dropdown
 @app.callback(
     Output('output-div', 'children'),
     Input('rollup-dropdown', 'value'),
+    Input('grouping-selector', 'value'),  # Add this input
     Input('tabs', 'value')  # Include the current tab as input
 )
-def update_output(selected_value, current_tab):
+
+def update_output(selected_value, grouping, current_tab):
     # Only update if we are in tab-1
     if current_tab == 'tab-1':
-        # Fetch data for roll-up operation
-        df = fetch_roll_up_data(engine)
-        if selected_value == 'Name':
-            return [html.Div("You selected: Name")]
-        elif selected_value == 'Genre':
-            fig = px.bar(df, x="genre_name", y="num_games", title="Number of Games per Genre")
+        # Define a mapping of selected values to DataFrame columns and titles
+        options = {
+            'Release date': {
+                'x': 'release_date',
+                'y': 'num_games',
+                'title': 'Number of Games by Release Date',
+                'x_label': 'Release Date',
+                'y_label': 'Total Games'
+            },
+            'Genre': {
+                'x': 'genre_name',
+                'y': 'num_games',
+                'title': 'Number of Games per Genre',
+                'x_label': 'Game Genre',
+                'y_label': 'Total Games'
+            },
+            'Price': {
+                'x': 'price',
+                'y': 'num_games',
+                'title': 'Number of Games by Price',
+                'x_label': 'Price',
+                'y_label': 'Total Games'
+            },
+            'User score': {
+                'x': 'user_score',
+                'y': 'num_games',
+                'title': 'Number of Games by User Score',
+                'x_label': 'User Score',
+                'y_label': 'Total Games'
+            },
+            'Estimated owners': {
+                'x': 'estimated_owners',
+                'y': 'num_games',
+                'title': 'Number of Games by Estimated Owners',
+                'x_label': 'Estimated Owners',
+                'y_label': 'Total Games'
+            },
+            'Peak CCU': {
+                'x': 'peak_ccu',
+                'y': 'num_games',
+                'title': 'Number of Games by Peak CCU',
+                'x_label': 'Peak CCU',
+                'y_label': 'Total Games'
+            }
+        }
+
+        df = fetch_roll_up_data(engine, selected_value, grouping)
+        if selected_value in options:
+            params = options[selected_value]
+            df = df.sort_values(by=params['y'], ascending=False)
+            fig = px.bar(df, x=params['x'], y=params['y'],
+                         title=params['title'],
+                         labels={params['x']: params['x_label'], params['y']: params['y_label']})
             return dcc.Graph(figure=fig)
-        elif selected_value == 'Release Date':
-            return html.Div("You selected: Release Year.")
+
     return html.Div()  # Return empty div for other tabs
+@app.callback(
+    Output('grouping-dropdown-container', 'style'),
+    Input('rollup-dropdown', 'value')
+)
+def update_grouping_dropdown(selected_value):
+    if selected_value == 'Release date':
+        return {'display': 'block'}  # Show the dropdown
+    return {'display': 'none'}  # Hide the dropdown
+
 if __name__ == '__main__':
     app.run_server(debug=False)

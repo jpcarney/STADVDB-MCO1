@@ -9,5 +9,5 @@ setup(
     author='John Paul C. Carney',
     author_email='jpcarney@dlsu.edu.ph',
     description='OLAP Web Application for STADVDB MCO1 Output',
-    install_requires = ['numpy', 'pandas', 'dash', 'kagglehub', 'pymysql', 'dash_bootstrap_components', 'plotly'],
+    install_requires = ['kagglehub', 'dash', 'pandas', 'numpy', 'dash_bootstrap_components', 'plotly', 'sqlalchemy'],
 )
