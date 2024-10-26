@@ -48,6 +48,9 @@ df = df.map(lambda x: None if isinstance(x, list) and len(x) == 0 else (np.nan i
 # Replace NaN values with 'None' (which MySQL will interpret as NULL)
 df = df.where(pd.notnull(df), None)
 
+# Replace "0 - 0" with "0 - 20000" in the Estimated Owners column
+df['Estimated owners'] = df['Estimated owners'].replace("0 - 0", "0 - 20000")
+
 # Define a function to parse dates
 def parse_dates(date_str):
     # Check if the format is '%b %Y'
@@ -370,6 +373,13 @@ def fetch_roll_up_drill_down_data(engine, selected_column, grouping):
         FROM Games
         GROUP BY price_range
         """
+    elif selected_column == "Estimated owners":
+        query = """
+        SELECT estimated_owners, COUNT(id) AS num_games
+        FROM Games
+        GROUP BY estimated_owners
+        """
+
     with engine.connect() as connection:
         return pd.read_sql(query, connection)
 
@@ -556,13 +566,13 @@ def create_output_graph(selected_value, grouping, operation):
                     params['x_label'] = 'Release Period'
                     df = df.sort_values(by=params['x'], ascending=True)
             elif selected_value == 'Genre':
-                df = df.sort_values(by=params['y'], ascending=True)
+                df = df.sort_values(by=params['y'], ascending=False)
             elif selected_value == 'Price':
                 df['lower_bound'] = df['price_range'].apply(lambda x: float(x.split('-')[0]))
                 df = df.sort_values(by='lower_bound', ascending=True)
             elif selected_value == 'Estimated owners':
-                df = df.sort_values(by=params['y'], ascending=True)
-
+                df['lower_bound_owners'] = df['estimated_owners'].apply(lambda x: float(x.split('-')[0]) if '-' in x else float(x))
+                df = df.sort_values(by='lower_bound_owners', ascending=True)
         if df is not None:
             fig = px.bar(df, x=params['x'], y=params['y'],
                          title=params['title'],
