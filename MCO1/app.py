@@ -732,7 +732,7 @@ def create_output_graph(selected_value, grouping, operation):
                     df = fetch_slice_data(engine, selected_value, grouping)
 
                     if df is not None and not df.empty:
-                        # Set parameters for the graph based on fetched data
+                        # Set parameters for the graphs based on fetched data
                         params['x'] = 'estimated_owners'
                         params['y'] = 'owned_in_genre' if selected_value == 'Genres' else 'owned_in_category'
                         params['x_label'] = 'Estimated Owners'
