@@ -395,6 +395,34 @@ def fetch_roll_up_drill_down_data(engine, selected_column, grouping):
     with engine.connect() as connection:
         return pd.read_sql(query, connection)
 
+def fetch_slice_data(engine, selected_column, grouping):
+    if selected_column == "Genres" and grouping:
+        query = """
+        SELECT Genres.genre_name, estimated_owners, COUNT(Genres.genre_name) AS owned_in_genre
+        FROM Games
+        JOIN GameGenres ON Games.id = GameGenres.game_id
+        JOIN Genres ON GameGenres.genre_id = Genres.id
+        WHERE Genres.genre_name = %s
+        GROUP BY Genres.genre_name, estimated_owners
+        ORDER BY estimated_owners ASC, owned_in_genre ASC;
+        """
+
+        with engine.connect() as connection:
+            return pd.read_sql(query, connection, params=(grouping,))
+    elif selected_column == "Categories" and grouping:
+        query = """
+        SELECT Categories.category_name, estimated_owners, COUNT(Categories.category_name) AS owned_in_category
+        FROM Games
+        JOIN GameCategories ON Games.id = GameCategories.game_id
+        JOIN Categories ON GameCategories.category_id = Categories.id
+        WHERE Categories.category_name = %s
+        GROUP BY Categories.category_name, estimated_owners
+        ORDER BY estimated_owners ASC, owned_in_category ASC;
+        """
+
+        with engine.connect() as connection:
+            return pd.read_sql(query, connection, params=(grouping,))
+
 # Database configuration
 db_config = {
     'host': 'localhost',
@@ -506,19 +534,80 @@ def create_rollup_drilldown_content():
         html.Div(id='rollup-drilldown-output', className='output-container')  # Output div
     ])
 
+# List of genres
+genres = sorted([
+    'Early Access', 'Audio Production', 'Sports', 'Racing',
+    'Web Publishing', 'Violent', 'Gore', 'Sexual Content',
+    'Adventure', 'RPG', 'Photo Editing', 'Utilities',
+    'Action', 'Game Development', 'Video Production',
+    'Massively Multiplayer', 'Design & Illustration', 'Indie',
+    'Nudity', 'Software Training', 'Education', 'Simulation',
+    'Free to Play', 'Animation & Modeling', 'Casual', 'Strategy'
+])
+
+categories = sorted([
+    'Remote Play on TV', 'Steam Leaderboards', 'MMO', 'In-App Purchases',
+    'Shared/Split Screen PvP', 'Steam Trading Cards', 'Single-player', 'Co-op',
+    'Steam Workshop', 'VR Support', 'SteamVR Collectibles', 'Partial Controller Support',
+    'Remote Play on Phone', 'Captions available', 'Shared/Split Screen Co-op',
+    'LAN PvP', 'Stats', 'PvP', 'Multi-player', 'Steam Cloud',
+    'Remote Play Together', 'LAN Co-op', 'Steam Achievements', 'Online PvP',
+    'Shared/Split Screen', 'Full controller support', 'Includes level editor',
+    'Cross-Platform Multiplayer', 'Online Co-op', 'Remote Play on Tablet',
+    'Steam Turn Notifications'
+])
+
 def create_slice_content():
     return html.Div([
-        html.Div([  # Dropdown container
+        html.Div([  # Dropdown container for variable selection
             html.H4("Variable Select:"),
             dcc.Dropdown(
-                id='slice-dropdown',
-                options=options,
-                value='Release date',
+                id='slice-variable-dropdown',
+                options=[
+                    {'label': 'Genres', 'value': 'Genres'},
+                    {'label': 'Categories', 'value': 'Categories'},
+                ],
+                value='Genres',  # Default selection
                 clearable=False
-            )
+            ),
+            # Genre Grouping Dropdown
+            html.Div(id='genre-grouping-dropdown-container', children=[
+                html.H4("Group By Genre:"),
+                dcc.Dropdown(
+                    id='genre-slice-selector',
+                    options=[{'label': genre, 'value': genre} for genre in genres],
+                    value='Early Access',  # Default selection
+                    clearable=False
+                ),
+                html.Div(id='slice-output', className='output-container')  # Output div for genre
+            ]),
+            # Categories Grouping Dropdown
+            html.Div(id='categories-grouping-dropdown-container', children=[
+                html.H4("Group By Category:"),
+                dcc.Dropdown(
+                    id='category-slice-selector',
+                    options=[{'label': category, 'value': category} for category in categories],
+                    value='Captions available',  # Default selection
+                    clearable=False
+                )
+            ]),
         ], className='dropdown-container'),
         html.Div(id='slice-output', className='output-container')  # Output div
     ])
+
+# Callback to update the visibility of the dropdowns
+@app.callback(
+    [
+        Output('genre-grouping-dropdown-container', 'style'),
+        Output('categories-grouping-dropdown-container', 'style'),
+    ],
+    Input('slice-variable-dropdown', 'value')
+)
+def update_grouping_dropdowns(selected_variable):
+    genre_style = {'display': 'block'} if selected_variable == 'Genres' else {'display': 'none'}
+    categories_style = {'display': 'block'} if selected_variable == 'Categories' else {'display': 'none'}
+
+    return genre_style, categories_style
 
 def create_dice_content():
     return html.Div([
@@ -555,11 +644,19 @@ def toggle_grouping_dropdown(selected_value):
 
 # Callback for Slice tab
 @app.callback(
-    Output('slice-output', 'children'),
-    Input('slice-dropdown', 'value'),
+    Output('slice-output', 'children'),  # Update genre output
+    Input('slice-variable-dropdown', 'value'),
+    Input('genre-slice-selector', 'value'),
+    Input('category-slice-selector', 'value')
 )
-def update_slice_output(selected_value):
-    return create_output_graph(selected_value, None, 'Slice')
+def update_slice_output(selected_value, genre_grouping, category_grouping):
+    # Determine the grouping based on the selected variable
+    if selected_value == 'Genres':
+        grouping = genre_grouping
+        return create_output_graph(selected_value, grouping, 'Slice')
+    else:
+        grouping = category_grouping
+        return create_output_graph(selected_value, grouping, 'Slice')
 
 # Callback for Dice tab
 @app.callback(
@@ -579,8 +676,15 @@ def create_output_graph(selected_value, grouping, operation):
         'Peak CCU': {'x': 'ccu_range', 'y': 'num_games', 'title': 'Number of Games by Peak CCU'},
     }
 
-    # Mock DataFrame fetch
-    df = fetch_roll_up_drill_down_data(engine, selected_value, grouping) if operation == 'Roll-up/Drill-down' else None
+    slice_options = {
+        'Genres': {'x': 'estimated_owners', 'y': 'num_games', 'title': 'Number of Estimated Owners for Genre: ' + grouping},
+        'Categories': {'x': 'estimated_owners', 'y': 'num_games', 'title': 'Number of Estimated Owners for Categories: ' + grouping}
+    }
+
+    if operation == 'Roll-up/Drill-down':
+        df = fetch_roll_up_drill_down_data(engine, selected_value, grouping)
+    elif operation == 'Slice':
+        df = fetch_slice_data(engine, selected_value, grouping)
 
     if selected_value in options:
         params = options[selected_value]
@@ -618,6 +722,27 @@ def create_output_graph(selected_value, grouping, operation):
                          title=params['title'],
                          labels={params['x']: params['x_label'], params['y']: 'Total Games'})
             return dcc.Graph(figure=fig)
+
+    if selected_value in slice_options:
+        params = slice_options[selected_value]
+        if operation == 'Slice':
+                # Fetching data using the slice fetch function
+                if selected_value in ('Genres', 'Categories'):
+                    # Since the grouping is already passed as a parameter
+                    df = fetch_slice_data(engine, selected_value, grouping)
+
+                    if df is not None and not df.empty:
+                        # Set parameters for the graph based on fetched data
+                        params['x'] = 'estimated_owners'
+                        params['y'] = 'owned_in_genre' if selected_value == 'Genres' else 'owned_in_category'
+                        params['x_label'] = 'Estimated Owners'
+                        params['title'] = slice_options[selected_value]['title']
+
+                        # Create the figure
+                        fig = px.bar(df, x=params['x'], y=params['y'],
+                                     title=params['title'],
+                                     labels={params['x']: params['x_label'], params['y']: 'Number of Games'})
+                        return dcc.Graph(figure=fig)
 
     return html.Div("No data available for the selected variable.")
 
