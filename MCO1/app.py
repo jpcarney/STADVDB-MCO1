@@ -669,16 +669,17 @@ def update_dice_output(selected_value):
 # General function to create output graphs
 def create_output_graph(selected_value, grouping, operation):
     options = {
-        'Release date': {'x': 'release_year', 'y': 'num_games', 'title': 'Number of Games by Release Date'},
-        'Genre': {'x': 'genre_name', 'y': 'num_games', 'title': 'Number of Games per Genre'},
-        'Price': {'x': 'price_range', 'y': 'num_games', 'title': 'Number of Games by Price'},
-        'Estimated owners': {'x': 'estimated_owners', 'y': 'num_games', 'title': 'Number of Games by Estimated Owners'},
-        'Peak CCU': {'x': 'ccu_range', 'y': 'num_games', 'title': 'Number of Games by Peak CCU'},
+        'Release date': {'x': 'release_year', 'y': 'num_games', 'title': 'Number of Games by Release Date', 'x_label': 'Release Year'},
+        'Genre': {'x': 'genre_name', 'y': 'num_games', 'title': 'Number of Games per Genre', 'x_label': 'Genre'},
+        'Price': {'x': 'price_range', 'y': 'num_games', 'title': 'Number of Games by Price', 'x_label': 'Price Range'},
+        'Estimated owners': {'x': 'estimated_owners', 'y': 'num_games', 'title': 'Number of Games by Estimated Owners', 'x_label': 'Estimated Owners'},
+        'Peak CCU': {'x': 'ccu_range', 'y': 'num_games', 'title': 'Number of Games by Peak CCU', 'x_label': 'Peak Concurrent Users (CCU)'},
     }
 
+    # Slice options (add x_label if needed)
     slice_options = {
-        'Genres': {'x': 'estimated_owners', 'y': 'num_games', 'title': 'Number of Estimated Owners for Genre: ' + grouping},
-        'Categories': {'x': 'estimated_owners', 'y': 'num_games', 'title': 'Number of Estimated Owners for Categories: ' + grouping}
+        'Genres': {'x': 'estimated_owners', 'y': 'num_games', 'title': 'Number of Estimated Owners for Genre: ' + grouping, 'x_label': 'Estimated Owners'},
+        'Categories': {'x': 'estimated_owners', 'y': 'num_games', 'title': 'Number of Estimated Owners for Categories: ' + grouping, 'x_label': 'Estimated Owners'}
     }
 
     if operation == 'Roll-up/Drill-down':

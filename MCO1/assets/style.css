@@ -39,3 +39,6 @@
     width: 300px;           /* Set the width of the dropdown here */
     text-align: left;
 }
+.grouping-dropdown-container {
+    padding: 20px;
+}
