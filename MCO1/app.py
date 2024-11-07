@@ -423,6 +423,32 @@ def fetch_slice_data(engine, selected_column, grouping):
         with engine.connect() as connection:
             return pd.read_sql(query, connection, params=(grouping,))
 
+def fetch_dice_data(engine, selected_column, grouping, release_date_grouping):
+    if selected_column == "Genres" and grouping and release_date_grouping:
+        query = """
+        SELECT Genres.genre_name, estimated_owners, YEAR(release_date) AS release_year, COUNT(Genres.genre_name) AS owned_in_genre
+        FROM Games
+        JOIN GameGenres ON Games.id = GameGenres.game_id
+        JOIN Genres ON GameGenres.genre_id = Genres.id
+        WHERE Genres.genre_name = %s AND YEAR(release_date) = %s
+        GROUP BY Genres.genre_name, estimated_owners, release_year
+        ORDER BY estimated_owners ASC, owned_in_genre ASC;
+        """
+        with engine.connect() as connection:
+            return pd.read_sql(query, connection, params=(grouping, release_date_grouping))
+    elif selected_column == "Categories" and grouping and release_date_grouping:
+        query = """
+                SELECT Categories.category_name, estimated_owners, YEAR(release_date) AS release_year, COUNT(Categories.category_name) AS owned_in_category
+                FROM Games
+                JOIN GameCategories ON Games.id = GameCategories.game_id
+                JOIN Categories ON GameCategories.category_id = Categories.id 
+                WHERE Categories.category_name = %s AND YEAR(release_date) = %s
+                GROUP BY Categories.category_name, estimated_owners, release_year
+                ORDER BY estimated_owners ASC, owned_in_category ASC;
+                """
+        with engine.connect() as connection:
+            return pd.read_sql(query, connection, params=(grouping, release_date_grouping))
+
 # Database configuration
 db_config = {
     'host': 'localhost',
@@ -557,6 +583,11 @@ categories = sorted([
     'Steam Turn Notifications'
 ])
 
+years = sorted([
+    '2006', '2007', '2008', '2009', '2010', '2011', '2012', '2013',
+    '2014', '2015', '2016', '2017', '2018', '2019', '2020', '2021', '2022'
+])
+
 def create_slice_content():
     return html.Div([
         html.Div([  # Dropdown container for variable selection
@@ -603,7 +634,7 @@ def create_slice_content():
     ],
     Input('slice-variable-dropdown', 'value')
 )
-def update_grouping_dropdowns(selected_variable):
+def update_slice_grouping_dropdowns(selected_variable):
     genre_style = {'display': 'block'} if selected_variable == 'Genres' else {'display': 'none'}
     categories_style = {'display': 'block'} if selected_variable == 'Categories' else {'display': 'none'}
 
@@ -611,17 +642,64 @@ def update_grouping_dropdowns(selected_variable):
 
 def create_dice_content():
     return html.Div([
-        html.Div([  # Dropdown container
+        html.Div([  # Dropdown container for variable selection
             html.H4("Variable Select:"),
             dcc.Dropdown(
-                id='dice-dropdown',
-                options=options,
-                value='Release date',
+                id='dice-variable-dropdown',
+                options=[
+                    {'label': 'Genres', 'value': 'Genres'},
+                    {'label': 'Categories', 'value': 'Categories'},
+                ],
+                value='Genres',  # Default selection
                 clearable=False
-            )
+            ),
+            # Genre Grouping Dropdown
+            html.Div(id='genre-dice-grouping-dropdown-container', children=[
+                html.H4("Group By Genre:"),
+                dcc.Dropdown(
+                    id='genre-dice-selector',
+                    options=[{'label': genre, 'value': genre} for genre in genres],
+                    value='Adventure',  # Default selection
+                    clearable=False
+                ),
+            ]),
+            # Categories Grouping Dropdown
+            html.Div(id='categories-dice-grouping-dropdown-container', children=[
+                html.H4("Group By Category:"),
+                dcc.Dropdown(
+                    id='category-dice-selector',
+                    options=[{'label': category, 'value': category} for category in categories],
+                    value='Co-op',  # Default selection
+                    clearable=False
+                )
+            ]),
+            # Release Date Grouping Dropdown
+            html.Div(id='release-date-grouping-dropdown-container', children=[
+                html.H4("Filter by Release Date:"),
+                dcc.Dropdown(
+                    id='release-date-dice-selector',
+                    options=[{'label': year, 'value': year} for year in years],
+                    value='2016',  # Default selection
+                    clearable=False
+                ),
+            ]),
         ], className='dropdown-container'),
         html.Div(id='dice-output', className='output-container')  # Output div
     ])
+
+# Callback to update the visibility of the dropdowns for the Dice section
+@app.callback(
+    [
+        Output('genre-dice-grouping-dropdown-container', 'style'),
+        Output('categories-dice-grouping-dropdown-container', 'style'),
+    ],
+    Input('dice-variable-dropdown', 'value')
+)
+def update_dice_grouping_dropdowns(selected_variable):
+    genre_style = {'display': 'block'} if selected_variable == 'Genres' else {'display': 'none'}
+    categories_style = {'display': 'block'} if selected_variable == 'Categories' else {'display': 'none'}
+
+    return genre_style, categories_style
 
 # Callback for Roll-up/Drill-down tab
 @app.callback(
@@ -658,16 +736,25 @@ def update_slice_output(selected_value, genre_grouping, category_grouping):
         grouping = category_grouping
         return create_output_graph(selected_value, grouping, 'Slice')
 
-# Callback for Dice tab
+# Callback for Dice Operation Output
 @app.callback(
     Output('dice-output', 'children'),
-    Input('dice-dropdown', 'value'),
+    Input('dice-variable-dropdown', 'value'),
+    Input('genre-dice-selector', 'value'),
+    Input('category-dice-selector', 'value'),
+    Input('release-date-dice-selector', 'value')
 )
-def update_dice_output(selected_value):
-    return create_output_graph(selected_value, None, 'Dice')
+def update_dice_output(selected_value, genre_grouping, category_grouping, release_grouping):
+    if selected_value == 'Genres':
+        grouping = genre_grouping
+        return create_output_graph(selected_value, grouping, 'Dice', release_grouping)
+    else:
+        grouping = category_grouping
+        return create_output_graph(selected_value, grouping, 'Dice', release_grouping)
+
 
 # General function to create output graphs
-def create_output_graph(selected_value, grouping, operation):
+def create_output_graph(selected_value, grouping, operation, dice_grouping=None):
     options = {
         'Release date': {'x': 'release_year', 'y': 'num_games', 'title': 'Number of Games by Release Date', 'x_label': 'Release Year'},
         'Genre': {'x': 'genre_name', 'y': 'num_games', 'title': 'Number of Games per Genre', 'x_label': 'Genre'},
@@ -682,10 +769,29 @@ def create_output_graph(selected_value, grouping, operation):
         'Categories': {'x': 'estimated_owners', 'y': 'num_games', 'title': 'Number of Estimated Owners for Categories: ' + grouping, 'x_label': 'Estimated Owners'}
     }
 
+    dice_options = {
+        'Genres': {
+            'x': 'estimated_owners',
+            'y': 'owned_in_genre',
+            'title': 'Number of Games in Genre: {grouping} for {dice_grouping}',
+            'x_label': 'Estimated Owners',
+            'y_label': 'Number of Games'
+        },
+        'Categories': {
+            'x': 'estimated_owners',
+            'y': 'owned_in_category',
+            'title': 'Number of Games in Category: {grouping} for {dice_grouping}',
+            'x_label': 'Estimated Owners',
+            'y_label': 'Number of Games'
+        }
+    }
+
     if operation == 'Roll-up/Drill-down':
         df = fetch_roll_up_drill_down_data(engine, selected_value, grouping)
     elif operation == 'Slice':
         df = fetch_slice_data(engine, selected_value, grouping)
+    elif operation == 'Dice':
+        df = fetch_dice_data(engine, selected_value, grouping, dice_grouping)
 
     if selected_value in options:
         params = options[selected_value]
@@ -727,23 +833,51 @@ def create_output_graph(selected_value, grouping, operation):
     if selected_value in slice_options:
         params = slice_options[selected_value]
         if operation == 'Slice':
-                # Fetching data using the slice fetch function
-                if selected_value in ('Genres', 'Categories'):
-                    # Since the grouping is already passed as a parameter
-                    df = fetch_slice_data(engine, selected_value, grouping)
+            # Fetching data using the slice fetch function
+            if selected_value in ('Genres', 'Categories'):
+                # Since the grouping is already passed as a parameter
+                df = fetch_slice_data(engine, selected_value, grouping)
 
-                    if df is not None and not df.empty:
-                        # Set parameters for the graphs based on fetched data
-                        params['x'] = 'estimated_owners'
-                        params['y'] = 'owned_in_genre' if selected_value == 'Genres' else 'owned_in_category'
-                        params['x_label'] = 'Estimated Owners'
-                        params['title'] = slice_options[selected_value]['title']
+                if df is not None and not df.empty:
+                    # Set parameters for the graphs based on fetched data
+                    params['x'] = 'estimated_owners'
+                    params['y'] = 'owned_in_genre' if selected_value == 'Genres' else 'owned_in_category'
+                    params['x_label'] = 'Estimated Owners'
+                    params['title'] = slice_options[selected_value]['title']
 
-                        # Create the figure
-                        fig = px.bar(df, x=params['x'], y=params['y'],
-                                     title=params['title'],
-                                     labels={params['x']: params['x_label'], params['y']: 'Number of Games'})
-                        return dcc.Graph(figure=fig)
+                    # Create the figure
+                    fig = px.bar(df, x=params['x'], y=params['y'],
+                                 title=params['title'],
+                                 labels={params['x']: params['x_label'], params['y']: 'Number of Games'})
+                    return dcc.Graph(figure=fig)
+
+    if selected_value in dice_options:
+        params = dice_options[selected_value]
+
+        # Ensure dice_grouping is used only when it's available
+        if dice_grouping:
+            # Only format the title if dice_grouping is provided
+            params['title'] = params['title'].format(grouping=grouping, dice_grouping=dice_grouping)
+        else:
+            # Format the title without dice_grouping
+            params['title'] = params['title'].format(grouping=grouping, dice_grouping="All")
+
+        # Fetch the data based on the dice operation
+        df = fetch_dice_data(engine, selected_value, grouping, dice_grouping)
+        if df is not None and not df.empty:
+            # Debugging: Check the data before plotting
+            print("Data for Dice Operation:", df.head())
+
+            # Set parameters for the graphs based on fetched data
+            params['x'] = 'estimated_owners'
+            params['y'] = 'owned_in_genre' if selected_value == 'Genres' else 'owned_in_category'
+            params['x_label'] = 'Estimated Owners'
+
+            # Create the figure for the Dice operation
+            fig = px.bar(df, x=params['x'], y=params['y'],
+                         title=params['title'],
+                         labels={params['x']: params['x_label'], params['y']: 'Number of Games'})
+            return dcc.Graph(figure=fig)
 
     return html.Div("No data available for the selected variable.")
 
